@@ -2,13 +2,13 @@ import { readPhotoZip } from "./adapters/zip.js";
 import { parseCsvRecord, parseMarkdownRecord } from "./core/record.js";
 import { matchCutsToPhotos } from "./core/match.js";
 import { downloadBytes, exportConfiguredZip } from "./core/export.js";
-import { compactNumbers, groupExcludedLines } from "./core/export-rules.js";
+import { compactNumbers, groupExcludedLines, makeExportArchiveFilename } from "./core/export-rules.js";
 import { evaluateInformationFrameLimit, renderInformationFrame } from "./core/information-frame.js";
 import { defaultRollName } from "./core/default-roll-name.js";
 import { resolveCutField, resolveCutRecord } from "./core/roll-values.js";
 import { groupShareFiles, makeShareFiles } from "./core/share.js";
 import { normalizeBulb, sharedCopy, shouldShowExifReason } from "./core/value-rules.js";
-import { filmFillAsk, lensFillAsk } from "./core/input-suggestion.js";
+import { inputSuggestionAsk } from "./core/input-suggestion.js";
 import {
   moveSelection, planBulkShootingInfo, renumberByOrder, renumberSelection, reverseSelection, selectionIsContiguous, shiftSelection,
 } from "./core/multi-edit.js";
@@ -476,7 +476,10 @@ function openFieldEditor(scope, field) {
     inherited = presentation.hasCutValue ? "" : presentation.value;
     hasCutValue = presentation.hasCutValue;
   }
-  state.editing = { scope, field, key: field.key, label: field.label, returnScreen: scope === "roll" ? "roll-info" : "cut", draft, inherited, hasCutValue };
+  state.editing = {
+    scope, field, key: field.key, label: field.label, returnScreen: scope === "roll" ? "roll-info" : "cut",
+    draft, original: draft, inherited, hasCutValue,
+  };
   renderFieldEditor();
   showScreen("field");
 }
@@ -484,7 +487,7 @@ function openFieldEditor(scope, field) {
 function openBulkFieldEditor(field) {
   state.editing = {
     scope: "bulk", field, key: field.key, label: field.label, returnScreen: "bulk-info",
-    draft: state.bulkDraft[field.key] ?? "", inherited: "", hasCutValue: false,
+    draft: state.bulkDraft[field.key] ?? "", original: state.bulkDraft[field.key] ?? "", inherited: "", hasCutValue: false,
   };
   renderFieldEditor();
   showScreen("field");
@@ -617,9 +620,26 @@ function currentRelatedValue(key) {
 
 function suggestionForEdit() {
   const editing = state.editing;
-  if (editing.key === "film") return filmFillAsk(editing.draft, currentRelatedValue("maker"), currentRelatedValue("boxSpeed"));
-  if (editing.key === "lens") return lensFillAsk(editing.draft, currentRelatedValue("focal"));
-  return null;
+  if (editing.key !== "film" && editing.key !== "lens") return null;
+  const previousLens = editing.key === "lens" ? editing.original : currentRelatedValue("lens");
+  const previousFilm = editing.key === "film" ? editing.original : currentRelatedValue("film");
+  return inputSuggestionAsk({
+    previousLens,
+    newLens: editing.key === "lens" ? editing.draft : previousLens,
+    focal: currentRelatedValue("focal"),
+    previousFilm,
+    newFilm: editing.key === "film" ? editing.draft : previousFilm,
+    manufacturer: currentRelatedValue("maker"),
+    boxSpeed: currentRelatedValue("boxSpeed"),
+  });
+}
+
+function applySuggestedValues(target, suggestion) {
+  if (!suggestion) return;
+  const values = { ...suggestion.fills, ...suggestion.changes };
+  if (values.manufacturer) target.maker = values.manufacturer;
+  if (values.boxSpeed) target.boxSpeed = values.boxSpeed;
+  if (values.focal) target.focal = values.focal;
 }
 
 function applyFieldValue(value, extra = null) {
@@ -638,23 +658,17 @@ function applyFieldValue(value, extra = null) {
     if (value.trim()) state.roll[editing.key] = value;
     else delete state.roll[editing.key];
     state.importedRollKeys.delete(editing.key);
-    if (extra?.manufacturer) state.roll.maker = extra.manufacturer;
-    if (extra?.boxSpeed) state.roll.boxSpeed = extra.boxSpeed;
-    if (extra?.focal) state.roll.focal = extra.focal;
+    applySuggestedValues(state.roll, extra);
   } else if (editing.scope === "bulk") {
     if (value.trim()) state.bulkDraft[editing.key] = value.trim();
     else delete state.bulkDraft[editing.key];
-    if (extra?.manufacturer && !state.bulkDraft.maker) state.bulkDraft.maker = extra.manufacturer;
-    if (extra?.boxSpeed && !state.bulkDraft.boxSpeed) state.bulkDraft.boxSpeed = extra.boxSpeed;
-    if (extra?.focal && !state.bulkDraft.focal) state.bulkDraft.focal = extra.focal;
+    applySuggestedValues(state.bulkDraft, extra);
   } else {
     const item = state.items[state.currentCut];
     const record = ensureCutValues(item);
     if (value.trim()) record[editing.key] = value;
     else delete record[editing.key];
-    if (extra?.manufacturer && !record.maker) record.maker = extra.manufacturer;
-    if (extra?.boxSpeed && !record.boxSpeed) record.boxSpeed = extra.boxSpeed;
-    if (extra?.focal && !record.focal) record.focal = extra.focal;
+    applySuggestedValues(record, extra);
   }
   if (editing.field?.recent && value.trim()) {
     const values = state.recent[editing.key] ?? [];
@@ -686,7 +700,7 @@ function finishFieldEdit(fromRecent = false) {
   const ask = suggestionForEdit();
   if (ask) {
     showDialog({
-      title: "아래 값을 채울까요?", body: ask.body, cancel: "아니요", confirm: "채우기",
+      title: ask.title, body: ask.body, cancel: "아니요", confirm: ask.accept,
       onCancel: () => applyFieldValue(editing.draft), onConfirm: () => applyFieldValue(editing.draft, ask),
     });
     return;
@@ -1250,7 +1264,7 @@ async function receiveRecord(file) {
 }
 
 async function buildOutput() {
-  const rollName = rollNameInput.value.trim() || defaultRollName();
+  const rollName = rollNameInput.value || defaultRollName();
   const quality = { high: 0.92, balanced: 0.82, small: 0.68 }[state.exportQuality] ?? 0.92;
   return exportConfiguredZip(currentExportItems(), {
     rollName, mode: state.mode, format: state.exportFormat, quality,
@@ -1493,9 +1507,11 @@ exportButton.addEventListener("click", async () => {
     setExportReasons();
     setStatus("내보낼 사진을 만들고 있어요.", false, exportStatus);
     const started = performance.now();
-    const rollName = rollNameInput.value.trim() || defaultRollName();
+    const rollName = rollNameInput.value || defaultRollName();
     const output = await buildOutput();
-    downloadBytes(output.bytes, `${rollName}_photos.zip`);
+    const archiveName = makeExportArchiveFilename(rollName);
+    if (archiveName.result !== "name") throw new Error("내보낼 파일 이름을 만들지 못했어요.");
+    downloadBytes(output.bytes, archiveName.name);
     const elapsedMs = performance.now() - started;
     setExportReasons(output.photoOnlyFrames);
     state.result = {

@@ -67,6 +67,64 @@ function focalText(value) {
   return Number.isInteger(value) ? String(value) : String(value);
 }
 
+function numericEqual(left, right) {
+  const leftNumber = Number(left);
+  const rightNumber = Number(right);
+  return String(left).trim() !== "" && String(right).trim() !== ""
+    && Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber === rightNumber;
+}
+
+export function inputSuggestionAsk({
+  previousLens = "", newLens = "", focal = "",
+  previousFilm = "", newFilm = "", manufacturer = "", boxSpeed = "",
+}) {
+  const fills = [];
+  const changes = [];
+  const offer = (field, value, current, labels, equal) => {
+    const shown = String(current ?? "").trim();
+    if (!shown) fills.push({ field, value, ...labels });
+    else if (!equal(shown, value)) changes.push({ field, value, current: shown, ...labels });
+  };
+
+  if (String(previousFilm).trim() !== String(newFilm).trim()) {
+    const suggestion = filmSuggestion(newFilm);
+    if (suggestion.manufacturer !== null) {
+      offer("manufacturer", suggestion.manufacturer, manufacturer, { fillLabel: "제조사", changeLabel: "제조사" }, (left, right) => left === right);
+    }
+    if (suggestion.boxIso !== null) {
+      offer("boxSpeed", String(suggestion.boxIso), boxSpeed, { fillLabel: "박스 감도", changeLabel: "박스 감도" }, numericEqual);
+    }
+  }
+  if (String(previousLens).trim() !== String(newLens).trim()) {
+    const focalValue = lensFocalSuggestion(newLens);
+    if (focalValue !== null) {
+      offer("focal", focalText(focalValue), focal, { fillLabel: "초점거리(mm)", changeLabel: "초점거리" }, numericEqual);
+    }
+  }
+  if (!fills.length && !changes.length) return null;
+
+  const fillValues = Object.fromEntries(fills.map(({ field, value }) => [field, value]));
+  const changeValues = Object.fromEntries(changes.map(({ field, value }) => [field, value]));
+  const title = changes.length === 0
+    ? "아래 값을 채울까요?"
+    : changes.length === 1 && fills.length === 0
+      ? `${changes[0].changeLabel}를 ${changes[0].value}로 바꿀까요?`
+      : "아래 값으로 바꿀까요?";
+  const body = changes.length === 1 && fills.length === 0
+    ? null
+    : [
+      ...fills.map(({ fillLabel, value }) => `${fillLabel}: ${value}`),
+      ...changes.map(({ changeLabel, current, value }) => `${changeLabel} ${current} → ${value}`),
+    ].join("\n");
+  return {
+    title,
+    accept: changes.length ? "바꾸기" : "채우기",
+    body,
+    fills: fillValues,
+    changes: changeValues,
+  };
+}
+
 export function filmFillAsk(film, currentManufacturer = "", currentBoxSpeed = "") {
   const suggestion = filmSuggestion(film);
   const manufacturer = currentManufacturer.trim() ? null : suggestion.manufacturer;
