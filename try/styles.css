@@ -1250,3 +1250,5 @@ label:has(input:focus-visible) > span {
   .app-capability-row { display: block; }
   .app-preview-button { margin-top: 4px; padding-left: 0; }
 }
+.feedback-link { margin: 16px 0 0; text-align: center; font-size: 15px; line-height: 20px; }
+.feedback-link a { display: inline-block; min-height: 44px; padding: 12px 8px; color: var(--accent); font-weight: 700; }
