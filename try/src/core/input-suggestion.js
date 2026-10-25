@@ -105,17 +105,13 @@ export function inputSuggestionAsk({
 
   const fillValues = Object.fromEntries(fills.map(({ field, value }) => [field, value]));
   const changeValues = Object.fromEntries(changes.map(({ field, value }) => [field, value]));
-  const title = changes.length === 0
-    ? "아래 값을 채울까요?"
-    : changes.length === 1 && fills.length === 0
-      ? `${changes[0].changeLabel}를 ${changes[0].value}로 바꿀까요?`
-      : "아래 값으로 바꿀까요?";
-  const body = changes.length === 1 && fills.length === 0
-    ? null
-    : [
-      ...fills.map(({ fillLabel, value }) => `${fillLabel}: ${value}`),
-      ...changes.map(({ changeLabel, current, value }) => `${changeLabel} ${current} → ${value}`),
-    ].join("\n");
+  const title = changes.length === 0 ? "아래 값을 채울까요?" : "아래 값으로 바꿀까요?";
+  const body = [
+    ...fills.map(({ fillLabel, value }) => changes.length
+      ? `${fillLabel} (비어 있음) → ${value}`
+      : `${fillLabel}: ${value}`),
+    ...changes.map(({ changeLabel, current, value }) => `${changeLabel} ${current} → ${value}`),
+  ].join("\n");
   return {
     title,
     accept: changes.length ? "바꾸기" : "채우기",

@@ -6,6 +6,8 @@ const ZIP_INPUT_CHUNK_BYTES = 64 * 1024;
 const LIMIT_MESSAGE = "파일이 너무 커서 가져오지 않았어요.";
 const PHOTO_NAME = /\.(?:jpe?g|png)$/i;
 
+export const ZIP_ERROR_KIND_LIMIT = "limit";
+
 export const WEB_ZIP_LIMITS = Object.freeze({
   maxZipBytes: 256 * MIB,
   maxEntryCount: 200,
@@ -30,8 +32,11 @@ function zipLimits(overrides = {}) {
   return { ...WEB_ZIP_LIMITS, ...overrides };
 }
 
-function tooLarge() {
-  return new Error(LIMIT_MESSAGE);
+function tooLarge(limit) {
+  const error = new Error(LIMIT_MESSAGE);
+  error.kind = ZIP_ERROR_KIND_LIMIT;
+  error.limit = limit;
+  return error;
 }
 
 function endOfCentralDirectory(bytes, view) {
@@ -55,7 +60,7 @@ function centralEntries(bytes, limits) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const decoder = new TextDecoder("utf-8", { fatal: false });
   const end = endOfCentralDirectory(bytes, view);
-  if (end.entries > limits.maxEntryCount) throw tooLarge();
+  if (end.entries > limits.maxEntryCount) throw tooLarge("entryCount");
   const centralEnd = end.start + end.size;
   if (centralEnd > end.offset || centralEnd > bytes.length) throw new Error("ZIP의 항목 표가 잘렸어요.");
   const entries = [];
@@ -78,9 +83,8 @@ function centralEntries(bytes, limits) {
     entries.push({ name, flags, compressedSize, size });
     totalUncompressedSize += size;
     largestEntrySize = Math.max(largestEntrySize, size);
-    if (size > limits.maxSingleEntryUncompressedBytes || totalUncompressedSize > limits.maxTotalUncompressedBytes) {
-      throw tooLarge();
-    }
+    if (size > limits.maxSingleEntryUncompressedBytes) throw tooLarge("singleEntryUncompressedBytes");
+    if (totalUncompressedSize > limits.maxTotalUncompressedBytes) throw tooLarge("totalUncompressedBytes");
     offset = entryEnd;
   }
   if (offset !== centralEnd) throw new Error("ZIP의 항목 표가 맞지 않아요.");
@@ -95,7 +99,7 @@ export function isSafeZipPath(name) {
 
 function inspectZipRecords(bytes, overrides) {
   const limits = zipLimits(overrides);
-  if (bytes.length > limits.maxZipBytes) throw tooLarge();
+  if (bytes.length > limits.maxZipBytes) throw tooLarge("zipBytes");
   const inspected = centralEntries(bytes, limits);
   for (const entry of inspected.entries) {
     if ((entry.flags & 1) !== 0) throw new Error("암호가 걸린 ZIP은 열 수 없어요.");
@@ -143,9 +147,13 @@ function unzipPhotos(bytes, inspected) {
         if (error) throw error;
         entryBytes += chunk.length;
         totalBytes += chunk.length;
-        if (entryBytes > inspected.limits.maxSingleEntryUncompressedBytes || totalBytes > inspected.limits.maxTotalUncompressedBytes) {
+        if (entryBytes > inspected.limits.maxSingleEntryUncompressedBytes) {
           file.terminate();
-          throw tooLarge();
+          throw tooLarge("singleEntryUncompressedBytes");
+        }
+        if (totalBytes > inspected.limits.maxTotalUncompressedBytes) {
+          file.terminate();
+          throw tooLarge("totalUncompressedBytes");
         }
         chunks.push(chunk.slice());
         if (final) files.push({ name: file.name, bytes: joined(chunks, entryBytes) });
@@ -158,7 +166,7 @@ function unzipPhotos(bytes, inspected) {
       unzip.push(bytes.subarray(offset, end), end === bytes.length);
     }
   } catch (error) {
-    if (error.message === LIMIT_MESSAGE) throw error;
+    if (error.kind === ZIP_ERROR_KIND_LIMIT) throw error;
     throw new Error(`ZIP을 풀지 못했어요: ${error.message}`);
   }
   if ([...expected.values()].some((count) => count !== 0)) throw new Error("ZIP을 풀지 못했어요: ZIP의 항목 표가 맞지 않아요.");

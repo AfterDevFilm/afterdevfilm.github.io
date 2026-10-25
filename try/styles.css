@@ -185,6 +185,7 @@ h2 {
   font-size: 14px;
   line-height: 20px;
 }
+.drop-zone #zip-limit-note { white-space: nowrap; }
 .status {
   min-height: 26px;
   margin: 24px 0 0;
@@ -198,6 +199,7 @@ h2 {
   background: var(--warn-halo);
   color: var(--warn);
 }
+.status.limit-error { white-space: pre-line; }
 
 .detail-header { margin-bottom: var(--section-gap); }
 .detail-title-row {

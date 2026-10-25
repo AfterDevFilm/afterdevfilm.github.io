@@ -1,4 +1,4 @@
-import { readPhotoZip } from "./adapters/zip.js";
+import { readPhotoZip, WEB_ZIP_LIMITS, ZIP_ERROR_KIND_LIMIT } from "./adapters/zip.js";
 import { parseCsvRecord, parseMarkdownRecord } from "./core/record.js";
 import { matchCutsToPhotos } from "./core/match.js";
 import { downloadBytes, exportConfiguredZip } from "./core/export.js";
@@ -97,6 +97,12 @@ const previewCanvas = byId("frame-preview");
 const shareButton = byId("share-button");
 const shareProgress = byId("share-progress");
 const rollNameInput = byId("roll-name");
+const zipLimitLabel = `${WEB_ZIP_LIMITS.maxZipBytes / (1024 * 1024)}MB`;
+const zipLimitLines = [
+  `체험판은 ${zipLimitLabel}까지만 받아요.`,
+  "앱에서는 현상소에서 받은 큰 ZIP도 그대로 넣을 수 있어요.",
+];
+byId("zip-limit-note").textContent = `체험판은 ${zipLimitLabel}까지 받아요`;
 
 function showScreen(name) {
   state.screen = name;
@@ -104,9 +110,11 @@ function showScreen(name) {
   window.scrollTo(0, 0);
 }
 
-function setStatus(message, error = false, target = state.screen === "start" ? startStatus : exportStatus) {
-  target.textContent = message;
+function setStatus(message, error = false, target = state.screen === "start" ? startStatus : exportStatus, errorKind = null) {
+  const isZipLimit = errorKind === ZIP_ERROR_KIND_LIMIT;
+  target.textContent = isZipLimit ? [message, ...zipLimitLines].join("\n") : message;
   target.classList.toggle("error", error);
+  target.classList.toggle("limit-error", isZipLimit);
 }
 
 function setExportReasons(frames = []) {
@@ -1124,7 +1132,7 @@ async function receiveZip(file, { askRollInfo = true } = {}) {
     state.photos = [];
     refreshItems();
     showScreen("start");
-    setStatus(error.message, true, startStatus);
+    setStatus(error.message, true, startStatus, error.kind);
     return false;
   }
 }
