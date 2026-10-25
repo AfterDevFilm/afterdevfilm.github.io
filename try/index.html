@@ -31,14 +31,15 @@
             <span>ZIP을 고르거나 여기로 끌어 놓아요</span>
             <small>JPEG·PNG 사진을 가져와요</small>
             <small id="zip-limit-note"></small>
+            <small id="example-availability-note">ZIP이 없으면 아래 예시로 해 볼 수 있어요</small>
           </label>
           <input id="zip-input" type="file" accept=".zip,application/zip" hidden>
         </div>
       </section>
       <p class="status" id="status" role="status">ZIP을 기다리고 있어요.</p>
       <section class="example-start" aria-labelledby="shifted-example-title">
-        <h2 id="shifted-example-title">번호가 밀린 롤</h2>
-        <p>합성 36컷 ZIP과 두 장 밀린 합성 촬영 기록으로 확인해요.</p>
+        <h2 id="shifted-example-title">한강 산책</h2>
+        <p>그림풍 합성 36컷 ZIP과 두 장 밀린 촬영 기록으로 확인해요.</p>
         <button id="shifted-demo" class="secondary" type="button">번호가 밀린 롤로 해 보기</button>
       </section>
       <p class="feedback-link"><a href="https://forms.gle/fPC8W1PEuGxw7V85A" target="_blank" rel="noopener noreferrer">써 보신 소감 남기기</a></p>
@@ -310,6 +311,10 @@
         <input id="roll-frame-label" type="checkbox">
         <span>롤·프레임 번호 표시</span>
       </label>
+      <label id="rgb-histogram-row" class="switch-row" hidden>
+        <input id="rgb-histogram" type="checkbox">
+        <span>RGB 히스토그램</span>
+      </label>
       <div class="export-settings">
         <div class="segmented-row">
           <span class="setting-label">형식</span>
@@ -317,6 +322,15 @@
             <button class="selected" type="button" data-format="jpeg">JPEG</button>
             <button type="button" data-format="webp">WebP<small id="webp-app-badge" hidden>앱에서는 WebP로 저장할 수 있어요</small></button>
             <button type="button" data-format="png">PNG</button>
+          </div>
+        </div>
+        <div id="ratio-row" class="segmented-row" hidden>
+          <span class="setting-label">비율</span>
+          <div class="segmented four" aria-label="비율">
+            <button class="selected" type="button" data-ratio="original">원본</button>
+            <button type="button" data-ratio="4:5">4:5</button>
+            <button type="button" data-ratio="3:4">3:4</button>
+            <button type="button" data-ratio="1:1">1:1</button>
           </div>
         </div>
         <div id="quality-row" class="segmented-row">

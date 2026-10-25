@@ -9,6 +9,8 @@ const FRAME_TOO_LARGE = "이 사진은 액자를 넣기엔 커요. 사진만 저
 const CAPTION_SEPARATOR = " · ";
 const CAPTION_PRIMARY_COLOR = "rgb(30,30,30)";
 const CAPTION_SECONDARY_COLOR = "rgb(55,55,55)";
+const HISTOGRAM_WIDTH_REF = 140;
+const HISTOGRAM_HEIGHT_REF = 22;
 
 const CAPABILITIES = {
   "iphone-safari": { id: "iphone-safari", photoPixels: 14_000_000, canvasPixels: 16_777_216, maxDimension: 4096 },
@@ -22,7 +24,7 @@ function scaleValue(value, widthScale) {
   return Math.round(value * widthScale);
 }
 
-function geometryAtWidth(photoWidthPx, photoHeightPx, rollFrameOn, outputWidth) {
+function geometryAtWidth(photoWidthPx, photoHeightPx, rollFrameOn, outputWidth, rgbHistogramOn = false) {
   const widthScale = outputWidth / REFERENCE_WIDTH;
   const scale = (value) => scaleValue(value, widthScale);
   const sideMargin = scale(SIDE_MARGIN_REF);
@@ -50,7 +52,10 @@ function geometryAtWidth(photoWidthPx, photoHeightPx, rollFrameOn, outputWidth) 
   const leftRuleX = sideMargin + scale(1);
   const centerRuleX = Math.round(outputWidth * CENTER_RULE_FRACTION);
   const rollFrameLabelBaselineY = rollFrameOn ? topOuterMargin + fontPx : null;
-  const photoY = topOuterMargin + (rollFrameOn ? fontPx + topLabelPhotoGap : 0);
+  const histogramWidth = rgbHistogramOn ? scale(HISTOGRAM_WIDTH_REF) : null;
+  const histogramHeight = rgbHistogramOn ? scale(HISTOGRAM_HEIGHT_REF) : null;
+  const topRowHeight = Math.max(rollFrameOn ? fontPx : 0, histogramHeight ?? 0);
+  const photoY = topOuterMargin + (topRowHeight > 0 ? topRowHeight + topLabelPhotoGap : 0);
   const captionBlockHeight = fontPx + rowGap;
   const captionTopY = photoY + photoHeight + bottomPhotoCaptionGap;
   return {
@@ -58,22 +63,76 @@ function geometryAtWidth(photoWidthPx, photoHeightPx, rollFrameOn, outputWidth) 
     sideMargin, photoWidth, photoHeight, photoX: sideMargin, photoY, topLabelX, leftRuleX, centerRuleX,
     ruleWidth, leftTextInset, rightTextInset, leftColumnWidth: centerRuleX - (leftRuleX + leftTextInset),
     rightColumnWidth: (outputWidth - sideMargin) - (centerRuleX + rightTextInset),
-    rollFrameLabelBaselineY, captionTopY, captionBlockHeight, orientationScale, widthScale,
+    rollFrameLabelBaselineY,
+    histogramX: histogramWidth == null ? null : outputWidth - sideMargin - histogramWidth,
+    histogramY: rgbHistogramOn ? topOuterMargin : null, histogramWidth, histogramHeight,
+    captionTopY, captionBlockHeight, orientationScale, widthScale,
     captionFontPx: scale(Math.max(12, Math.round(CAPTION_FONT_SIZE_REF * orientationScale))),
     rollFrameFontPx: scale(Math.max(12, Math.round(ROLL_FRAME_FONT_SIZE_REF * orientationScale))),
     typographyRowGap: scale(Math.max(1, Math.round(CAPTION_ROW_GAP_REF * orientationScale))),
   };
 }
 
-export function computeInformationFrameGeometry(photoWidth, photoHeight, rollFrameOn = true) {
+export function computeInformationFrameGeometry(photoWidth, photoHeight, rollFrameOn = true, rgbHistogramOn = false) {
   if (!Number.isInteger(photoWidth) || !Number.isInteger(photoHeight) || photoWidth <= 0 || photoHeight <= 0) {
     throw new Error("사진 크기는 양의 정수여야 해요.");
   }
   let outputWidth = photoWidth;
-  while (geometryAtWidth(photoWidth, photoHeight, rollFrameOn, outputWidth).photoWidth !== photoWidth) outputWidth += 1;
-  const geometry = geometryAtWidth(photoWidth, photoHeight, rollFrameOn, outputWidth);
+  while (geometryAtWidth(photoWidth, photoHeight, rollFrameOn, outputWidth, rgbHistogramOn).photoWidth !== photoWidth) outputWidth += 1;
+  const geometry = geometryAtWidth(photoWidth, photoHeight, rollFrameOn, outputWidth, rgbHistogramOn);
   if (geometry.photoHeight !== photoHeight) throw new Error("사진 크기를 그대로 둘 수 없어요.");
   return geometry;
+}
+
+export function showsRGBHistogramControl(mode) {
+  return mode === "simple" || mode === "detail";
+}
+
+export function histogramSampleDimensions(width, height) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) throw new Error("사진 크기는 양의 정수여야 해요.");
+  const longest = Math.max(width, height);
+  if (longest <= 512) return { width, height };
+  const scale = 512 / longest;
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
+export function computeRGBHistogramFromSRGBPixels(pixels) {
+  const counts = [new Array(256).fill(0), new Array(256).fill(0), new Array(256).fill(0)];
+  for (const pixel of pixels) for (let channel = 0; channel < 3; channel += 1) counts[channel][pixel[channel]] += 1;
+  const commonMaximum = Math.max(...counts.flat().map((count) => Math.sqrt(count)));
+  const normalized = (channel) => counts[channel].map((count) => commonMaximum === 0 ? 0 : Math.sqrt(count) / commonMaximum);
+  return { red: normalized(0), green: normalized(1), blue: normalized(2) };
+}
+
+function histogramFromDecodedImage(image) {
+  const size = histogramSampleDimensions(image.width, image.height);
+  const sample = document.createElement("canvas");
+  sample.width = size.width;
+  sample.height = size.height;
+  const context = sample.getContext("2d", { alpha: false, colorSpace: "srgb" });
+  context.drawImage(image, 0, 0, size.width, size.height);
+  const bytes = context.getImageData(0, 0, size.width, size.height, { colorSpace: "srgb" }).data;
+  const pixels = [];
+  for (let offset = 0; offset < bytes.length; offset += 4) pixels.push([bytes[offset], bytes[offset + 1], bytes[offset + 2]]);
+  return computeRGBHistogramFromSRGBPixels(pixels);
+}
+
+function drawHistogram(context, geometry, histogram) {
+  const { histogramX: left, histogramY: top, histogramWidth: width, histogramHeight: height } = geometry;
+  if (left == null || top == null || width == null || height == null) return;
+  const bottom = top + height;
+  const draw = (values, color) => {
+    context.beginPath();
+    context.moveTo(left, bottom);
+    values.forEach((value, index) => context.lineTo(left + index * (width - 1) / 255, bottom - value * height));
+    context.lineTo(left + width, bottom);
+    context.closePath();
+    context.fillStyle = color;
+    context.fill();
+  };
+  draw(histogram.red, "rgba(255,0,0,0.55)");
+  draw(histogram.green, "rgba(0,255,0,0.55)");
+  draw(histogram.blue, "rgba(0,0,255,0.55)");
 }
 
 export function browserCanvasCapability(userAgent = navigator.userAgent) {
@@ -86,8 +145,8 @@ export function browserCanvasCapability(userAgent = navigator.userAgent) {
   return { ...CAPABILITIES.other };
 }
 
-export function evaluateInformationFrameLimit(width, height, capability = browserCanvasCapability()) {
-  const geometry = computeInformationFrameGeometry(width, height, true);
+export function evaluateInformationFrameLimit(width, height, capability = browserCanvasCapability(), rgbHistogramOn = false) {
+  const geometry = computeInformationFrameGeometry(width, height, true, rgbHistogramOn);
   const sourcePixels = width * height;
   const canvasPixels = geometry.canvasWidth * geometry.canvasHeight;
   const allowed = sourcePixels <= capability.photoPixels && canvasPixels <= capability.canvasPixels
@@ -201,12 +260,12 @@ function canvasJpegBytes(canvas, quality) {
   }, "image/jpeg", quality));
 }
 
-export async function renderInformationFrame(photo, record, mode, frame, quality = 0.85, rollFrameOn = true) {
-  const limit = evaluateInformationFrameLimit(photo.width, photo.height);
+export async function renderInformationFrame(photo, record, mode, frame, quality = 0.85, rollFrameOn = true, rgbHistogramOn = false) {
+  const limit = evaluateInformationFrameLimit(photo.width, photo.height, browserCanvasCapability(), rgbHistogramOn);
   if (!limit.allowed) throw new Error(limit.message);
   await Promise.all([document.fonts.load('400 16px "Noto Sans KR Frame"'), document.fonts.load('700 16px "Noto Sans KR Frame"')]);
   const image = await decodePhoto(photo.bytes, photo.format);
-  const geometry = rollFrameOn ? limit.geometry : computeInformationFrameGeometry(photo.width, photo.height, false);
+  const geometry = computeInformationFrameGeometry(photo.width, photo.height, rollFrameOn, rgbHistogramOn);
   const canvas = document.createElement("canvas");
   canvas.width = geometry.canvasWidth;
   canvas.height = geometry.canvasHeight;
@@ -214,6 +273,7 @@ export async function renderInformationFrame(photo, record, mode, frame, quality
   context.fillStyle = "white";
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, geometry.photoX, geometry.photoY, geometry.photoWidth, geometry.photoHeight);
+  if (rgbHistogramOn) drawHistogram(context, geometry, histogramFromDecodedImage(image));
   if (typeof image.close === "function") image.close();
   context.textBaseline = "alphabetic";
   context.font = `400 ${geometry.rollFrameFontPx}px "Noto Sans KR Frame"`;

@@ -3,6 +3,57 @@ import { writePhotoMetadata } from "../adapters/exif.js";
 import { makeExportFilename } from "./export-rules.js";
 import { evaluateInformationFrameLimit, renderInformationFrame } from "./information-frame.js";
 
+export function computePaddingRatioLayout(blockWidth, blockHeight, ratio) {
+  if (!Number.isInteger(blockWidth) || !Number.isInteger(blockHeight) || blockWidth <= 0 || blockHeight <= 0) throw new Error("사진 크기는 양의 정수여야 해요.");
+  let canvasWidth = blockWidth;
+  let canvasHeight = blockHeight;
+  if (ratio === "4:5" && 4 * blockHeight > 5 * blockWidth) {
+    const s = Math.floor((4 * blockHeight - 5 * blockWidth) / 8 + 0.5);
+    canvasWidth = 4 * Math.ceil((blockWidth + 2 * s) / 4);
+    canvasHeight = 5 * canvasWidth / 4;
+  } else if (ratio === "3:4" && 3 * blockHeight > 4 * blockWidth) {
+    const s = Math.floor(2 * (3 * blockHeight - 4 * blockWidth) / 13 + 0.5);
+    canvasWidth = 3 * Math.ceil((blockWidth + 2 * s) / 3);
+    canvasHeight = 4 * canvasWidth / 3;
+  } else if (ratio === "1:1" && blockHeight > blockWidth) {
+    const s = Math.floor(2 * (blockHeight - blockWidth) / 3 + 0.5);
+    canvasWidth = blockWidth + 2 * s;
+    canvasHeight = canvasWidth;
+  } else if (ratio === "4:5") {
+    const unit = Math.max(Math.ceil(blockWidth / 4), Math.ceil(blockHeight / 5));
+    canvasWidth = 4 * unit;
+    canvasHeight = 5 * unit;
+  } else if (ratio === "3:4") {
+    const unit = Math.max(Math.ceil(blockWidth / 3), Math.ceil(blockHeight / 4));
+    canvasWidth = 3 * unit;
+    canvasHeight = 4 * unit;
+  } else if (ratio === "1:1") {
+    canvasWidth = canvasHeight = Math.max(blockWidth, blockHeight);
+  } else if (ratio !== "original") throw new Error("내보낼 비율을 고르지 못했어요.");
+  return { canvasWidth, canvasHeight, x: Math.floor((canvasWidth - blockWidth) / 2), y: Math.floor((canvasHeight - blockHeight) / 2) };
+}
+
+export function applyPaddingRatioCanvas(block, ratio) {
+  if (ratio === "original") return block;
+  const layout = computePaddingRatioLayout(block.width, block.height, ratio);
+  const canvas = document.createElement("canvas");
+  canvas.width = layout.canvasWidth;
+  canvas.height = layout.canvasHeight;
+  const context = canvas.getContext("2d", { alpha: false });
+  context.fillStyle = "white";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(block, layout.x, layout.y);
+  return canvas;
+}
+
+export function applyPaddingRatioFilename(name, ratio) {
+  if (ratio === "original") return name;
+  const suffix = { "4:5": "_4x5", "3:4": "_3x4", "1:1": "_1x1" }[ratio];
+  if (!suffix) throw new Error("내보낼 비율을 고르지 못했어요.");
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? `${name.slice(0, dot)}${suffix}${name.slice(dot)}` : `${name}${suffix}`;
+}
+
 function metadataOnlyBytes(item, metadata) {
   return item.format === "png" ? item.bytes : writePhotoMetadata(item.bytes, metadata);
 }
@@ -87,7 +138,7 @@ function canvasBytes(canvas, type, quality) {
 /** The browser export screen's real ZIP output. It keeps JPEG photo-only bytes when possible and uses Canvas only for a requested conversion or frame. */
 export async function exportConfiguredZip(items, {
   rollName = "roll", mode = "off", format = "jpeg", quality = 0.9, width = 2,
-  includeCut = false, rollFrameLabel = false,
+  includeCut = false, rollFrameLabel = false, rgbHistogram = false, paddingRatio = "original",
 } = {}) {
   const type = { jpeg: "image/jpeg", webp: "image/webp", png: "image/png" }[format];
   const extension = { jpeg: "jpg", webp: "webp", png: "png" }[format];
@@ -106,18 +157,23 @@ export async function exportConfiguredZip(items, {
     if (nameResult.result !== "name") throw new Error("내보낼 파일 이름을 만들지 못했어요.");
 
     let bytes;
+    let outputName = nameResult.name;
     const correction = item.correction ?? { turns: 0, flipped: false };
     const unchanged = correction.turns % 4 === 0 && !correction.flipped;
     if (actualMode === "off" && format === "jpeg" && item.format !== "png" && unchanged) {
       bytes = metadataOnlyBytes(item, metadata);
     } else {
-      const canvas = actualMode === "off"
+      let canvas = actualMode === "off"
         ? await photoCanvas(item)
-        : (await renderInformationFrame(item, metadata, actualMode, item.frame, quality, rollFrameLabel)).canvas;
+        : (await renderInformationFrame(item, metadata, actualMode, item.frame, quality, rollFrameLabel, rgbHistogram)).canvas;
+      if (actualMode !== "off") {
+        canvas = applyPaddingRatioCanvas(canvas, paddingRatio);
+        outputName = applyPaddingRatioFilename(outputName, paddingRatio);
+      }
       bytes = await canvasBytes(canvas, type, quality);
       if (format === "jpeg") bytes = writePhotoMetadata(bytes, metadata);
     }
-    files.push({ name: nameResult.name, bytes, type });
+    files.push({ name: outputName, bytes, type });
   }
   return { bytes: makeZip(files), files, photoOnlyFrames };
 }

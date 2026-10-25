@@ -1,9 +1,9 @@
 import { readPhotoZip, WEB_ZIP_LIMITS, ZIP_ERROR_KIND_LIMIT } from "./adapters/zip.js";
-import { parseCsvRecord, parseMarkdownRecord } from "./core/record.js";
+import { parseCsvRecord, parseMarkdownRecord, unknownColumnsLine } from "./core/record.js";
 import { matchCutsToPhotos } from "./core/match.js";
-import { downloadBytes, exportConfiguredZip } from "./core/export.js";
+import { applyPaddingRatioCanvas, downloadBytes, exportConfiguredZip } from "./core/export.js";
 import { compactNumbers, groupExcludedLines, makeExportArchiveFilename } from "./core/export-rules.js";
-import { evaluateInformationFrameLimit, renderInformationFrame } from "./core/information-frame.js";
+import { evaluateInformationFrameLimit, renderInformationFrame, showsRGBHistogramControl } from "./core/information-frame.js";
 import { defaultRollName } from "./core/default-roll-name.js";
 import { resolveCutField, resolveCutRecord } from "./core/roll-values.js";
 import { groupShareFiles, makeShareFiles } from "./core/share.js";
@@ -16,7 +16,6 @@ import { contactSheetBlob, evaluateContactSheetLimit, renderContactSheet } from 
 import {
   TEMPLATE_ROLL_FIELDS, cutNameRejectedLine, rollMissingNumberLine, templateCutLine,
 } from "./core/template-import.js";
-import { shiftedRollExampleBytes } from "./examples/shifted-roll.js";
 
 const shootingFields = [
   { key: "camera", label: "카메라", recent: true, placeholder: "예: Nikon FM2" },
@@ -46,7 +45,7 @@ const state = {
   screen: "start", returnScreen: "roll", presentation: "grid", columns: 2,
   currentCut: 0, previewToken: 0, thumbnailToken: 0, shareSession: null,
   orientation: {}, cutMeta: {}, recent: {}, editing: null, dialog: null, rollAskPending: true,
-  exportFormat: "jpeg", exportQuality: "high", exportDigits: 2, rollFrameLabel: false,
+  exportFormat: "jpeg", exportQuality: "high", exportDigits: 2, rollFrameLabel: false, rgbHistogram: false, paddingRatio: "original",
   exportSelection: new Set(), webpSupported: null, result: null,
   cutOrder: [], frameByCut: {}, bulkEditing: false, bulkSelection: new Set(), bulkDraft: {}, bulkAfterAction: false, bulkMessage: "",
   contactFormat: "jpeg", contactQuality: "high", contactHeader: true, contactRender: null, contactFile: null,
@@ -838,8 +837,8 @@ async function renderPreview() {
       image.close();
       source = canvas;
     } else {
-      const rendered = await renderInformationFrame(item, item.record, state.mode, item.frame, 0.9, state.rollFrameLabel);
-      source = rendered.canvas;
+      const rendered = await renderInformationFrame(item, item.record, state.mode, item.frame, 0.9, state.rollFrameLabel, state.rgbHistogram);
+      source = applyPaddingRatioCanvas(rendered.canvas, state.paddingRatio);
     }
     if (token !== state.previewToken) return;
     previewCanvas.width = source.width;
@@ -861,7 +860,11 @@ function currentExportItems() {
 function updateExportControls() {
   for (const input of document.querySelectorAll('input[name="frame-mode"]')) input.checked = input.value === state.mode;
   byId("roll-frame-row").hidden = state.mode === null || state.mode === "off";
+  byId("rgb-histogram-row").hidden = !showsRGBHistogramControl(state.mode);
+  byId("ratio-row").hidden = state.mode === null || state.mode === "off";
   byId("roll-frame-label").checked = state.rollFrameLabel;
+  byId("rgb-histogram").checked = state.rgbHistogram;
+  for (const button of document.querySelectorAll("[data-ratio]")) button.classList.toggle("selected", button.dataset.ratio === state.paddingRatio);
   for (const button of document.querySelectorAll("[data-format]")) button.classList.toggle("selected", button.dataset.format === state.exportFormat);
   for (const button of document.querySelectorAll("[data-quality]")) button.classList.toggle("selected", button.dataset.quality === state.exportQuality);
   for (const button of document.querySelectorAll("[data-digits]")) button.classList.toggle("selected", Number(button.dataset.digits) === state.exportDigits);
@@ -931,6 +934,8 @@ function openExport(selectedCutIds = null) {
   state.exportQuality = "high";
   state.exportDigits = 2;
   state.rollFrameLabel = false;
+  state.rgbHistogram = false;
+  state.paddingRatio = "original";
   state.exportSelection = new Set(state.returnScreen === "cut" ? [state.items[state.currentCut].frame]
     : selectedCutIds ? state.items.filter((item) => selectedCutIds.has(item.cutId)).map((item) => item.frame)
       : state.items.map((item) => item.frame));
@@ -1142,19 +1147,20 @@ function numberFromExampleName(name) {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
-async function startShiftedExample() {
+async function startHanriverExample() {
   const button = byId("shifted-demo");
   button.disabled = true;
   setStatus("합성 예시를 열고 있어요.", false, startStatus);
   try {
-    const { zipBytes, recordBytes } = shiftedRollExampleBytes();
-    const opened = await receiveZip(new File([zipBytes], "shifted-roll.zip", { type: "application/zip" }), { askRollInfo: false });
+    const { hanriverRollExampleBytes } = await import("./examples/hanriver-roll.js");
+    const { zipBytes, recordBytes } = hanriverRollExampleBytes();
+    const opened = await receiveZip(new File([zipBytes], "hanriver-roll.zip", { type: "application/zip" }), { askRollInfo: false });
     if (!opened) return;
     state.exampleActive = true;
     state.frameByCut = Object.fromEntries(state.photos.map((photo) => [photo.name, numberFromExampleName(photo.name)]));
     refreshItems();
     renderRoll();
-    await receiveRecord(new File([recordBytes], "shifted-shooting-record.csv", { type: "text/csv" }));
+    await receiveRecord(new File([recordBytes], "hanriver_shooting_record.csv", { type: "text/csv" }));
   } catch (error) {
     showScreen("start");
     setStatus(error.message, true, startStatus);
@@ -1196,6 +1202,7 @@ function renderRecordConfirmation() {
   const missing = rollMissingNumberLine(parsed.cuts.map((cut) => cut.n), state.items.map((item) => item.frame));
   const notices = [
     rejected,
+    unknownColumnsLine(parsed.unknownColumns),
     parsed.unread.length ? "읽지 못한 줄은 메모에 남겼어요." : null,
     parsed.confirmations?.length ? "번호가 맞지 않는 줄이 있어요. 확인해 주세요." : null,
     missing,
@@ -1277,6 +1284,8 @@ async function buildOutput() {
   return exportConfiguredZip(currentExportItems(), {
     rollName, mode: state.mode, format: state.exportFormat, quality,
     width: state.exportDigits, rollFrameLabel: state.rollFrameLabel,
+    rgbHistogram: state.mode === "off" ? false : state.rgbHistogram,
+    paddingRatio: state.mode === "off" ? "original" : state.paddingRatio,
   });
 }
 
@@ -1333,7 +1342,7 @@ function renderResult() {
 
 zipInput.addEventListener("change", () => zipInput.files[0] && receiveZip(zipInput.files[0]));
 recordInput.addEventListener("change", () => recordInput.files[0] && receiveRecord(recordInput.files[0]));
-byId("shifted-demo").addEventListener("click", startShiftedExample);
+byId("shifted-demo").addEventListener("click", startHanriverExample);
 byId("record-import").addEventListener("click", () => recordInput.click());
 byId("record-examples").addEventListener("click", openExampleSheet);
 byId("record-guide-info").addEventListener("click", showTemplateGuide);
@@ -1503,6 +1512,13 @@ byId("roll-frame-label").addEventListener("change", (event) => {
   state.rollFrameLabel = event.target.checked;
   renderPreview();
 });
+byId("rgb-histogram").addEventListener("change", (event) => {
+  state.rgbHistogram = event.target.checked;
+  renderPreview();
+});
+for (const button of document.querySelectorAll("[data-ratio]")) {
+  button.addEventListener("click", () => { state.paddingRatio = button.dataset.ratio; updateExportControls(); renderPreview(); });
+}
 byId("toggle-all-cuts").addEventListener("click", () => {
   state.exportSelection = state.exportSelection.size === state.items.length ? new Set() : new Set(state.items.map((item) => item.frame));
   renderExportCuts();

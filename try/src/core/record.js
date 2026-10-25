@@ -1,17 +1,42 @@
 import { cleanExposureRational } from "./value-rules.js";
 
-const rollKeys = new Map([
-  ["roll_id", "name"], ["롤 이름", "name"], ["name", "name"],
-  ["camera", "camera"], ["카메라", "camera"], ["바디", "camera"],
-  ["lens", "lens"], ["렌즈", "lens"],
-  ["focal", "focal"], ["초점거리(mm)", "focal"], ["초점거리", "focal"],
-  ["film", "film"], ["필름", "film"],
-  ["maker", "maker"], ["필름 제조사", "maker"],
-  ["boxspeed", "boxSpeed"], ["박스 감도", "boxSpeed"],
-  ["ei", "ei"], ["rating_ei", "ei"], ["감도(ei)", "ei"], ["노출 지수(ei)", "ei"], ["exposure index", "ei"],
-  ["process", "process"], ["현상 방식", "process"], ["현상", "process"],
-  ["lab", "lab"], ["현상소", "lab"],
-  ["rollnumber", "rollNumber"], ["롤 번호", "rollNumber"],
+export const headerAliases = [
+  ["롤 이름", "rollIdentifier"], ["roll", "rollIdentifier"],
+  ["카메라", "camera"], ["camera", "camera"], ["바디", "camera"], ["렌즈", "lens"], ["lens", "lens"],
+  ["필름", "filmStock"], ["film", "filmStock"],
+  ["감도(ei)", "exposureIndex"], ["ei", "exposureIndex"], ["rating_ei", "exposureIndex"], ["노출 지수(ei)", "exposureIndex"],
+  ["현상", "developmentProcess"], ["현상 방식", "developmentProcess"], ["process", "developmentProcess"],
+  ["필름 제조사", "filmManufacturer"], ["film manufacturer", "filmManufacturer"],
+  ["박스 감도", "boxSpeed"], ["box speed", "boxSpeed"], ["현상소", "lab"], ["lab", "lab"],
+  ["롤 번호", "rollNumber"], ["roll number", "rollNumber"], ["초점거리(mm)", "focalLength"], ["focal", "focalLength"],
+  ["번호", "number"], ["no", "number"], ["#", "number"], ["조리개", "aperture"], ["aperture", "aperture"],
+  ["셔터", "shutter"], ["shutter", "shutter"], ["노출보정", "exposureCompensation"], ["노출 보정", "exposureCompensation"], ["ev", "exposureCompensation"],
+  ["촬영일", "shootingDate"], ["date", "shootingDate"], ["메모", "note"], ["note", "note"],
+  ["설정", "settings"], ["노출", "settings"], ["settings", "settings"], ["exposure", "settings"],
+  ["컷 이름", "cutName"], ["피사체", "subject"],
+];
+
+const boundaryWhitespace = /[\s\u0085\u00a0\u1680\u2000-\u200d\u2028\u2029\u202f\u205f\u2060\u3000\ufeff]/gu;
+export const recognizedTrailingHeaderUnits = new Set(["mm"]);
+
+export function normalizeTemplateHeader(raw) {
+  let value = String(raw ?? "").normalize("NFC").trim()
+    .replaceAll("（", "(").replaceAll("）", ")");
+  const trailing = value.match(/\(([^()]*)\)$/u);
+  if (trailing) {
+    const unit = trailing[1].replace(boundaryWhitespace, "").toLowerCase();
+    if (recognizedTrailingHeaderUnits.has(unit)) value = value.slice(0, trailing.index);
+  }
+  return value.replace(boundaryWhitespace, "").toLowerCase();
+}
+
+const headersByNormalized = new Map(headerAliases.map(([raw, key]) => [normalizeTemplateHeader(raw), key]));
+export function templateHeaderKey(raw) { return headersByNormalized.get(normalizeTemplateHeader(raw)) ?? null; }
+
+const rollKeyByHeader = new Map([
+  ["rollIdentifier", "name"], ["camera", "camera"], ["lens", "lens"], ["focalLength", "focal"],
+  ["filmStock", "film"], ["filmManufacturer", "maker"], ["boxSpeed", "boxSpeed"], ["exposureIndex", "ei"],
+  ["developmentProcess", "process"], ["lab", "lab"], ["rollNumber", "rollNumber"],
 ]);
 
 function stripMarkup(value) {
@@ -34,8 +59,17 @@ function parseQuoted(value) {
 }
 
 function canonicalRollKey(raw) {
-  const clean = stripMarkup(raw).replace(/:$/, "").trim();
-  return rollKeys.get(clean) ?? rollKeys.get(clean.toLowerCase()) ?? null;
+  return rollKeyByHeader.get(templateHeaderKey(stripMarkup(raw).replace(/:$/, ""))) ?? null;
+}
+
+function addUnknown(columns, raw) {
+  const value = stripMarkup(raw);
+  if (value && !columns.includes(value)) columns.push(value);
+}
+
+// PROVISIONAL (owner decision 2026-10-25): exact confirmation-screen wording.
+export function unknownColumnsLine(columns) {
+  return columns?.length ? `알아듣지 못한 칸: ${columns.join(", ")}` : null;
 }
 
 function usableRollValue(field, value) {
@@ -110,11 +144,11 @@ function validCutName(value, frame) {
 }
 
 function parseCutRow(headers, cells, lineNumber, options = {}) {
-  const numberIndex = headers.findIndex((header) => ["번호", "#", "no"].includes(header.toLowerCase()));
+  const numberIndex = headers.findIndex((header) => templateHeaderKey(header) === "number");
   const numberText = cells[numberIndex] ?? "";
   const match = numberText.match(/^#?0*([1-9]\d*)$/);
-  if (!match) return { unread: true };
-  const cut = { n: Number(match[1]) };
+  if (numberIndex >= 0 && !match) return { unread: true };
+  const cut = { n: match ? Number(match[1]) : null };
   const values = new Map();
   let subject = "";
   let explicitName = "";
@@ -123,28 +157,30 @@ function parseCutRow(headers, cells, lineNumber, options = {}) {
   headers.forEach((header, index) => {
     const raw = cells[index] ?? "";
     const value = stripMarkup(raw);
-    const lower = header.toLowerCase();
-    if (header === "조리개") {
+    const key = templateHeaderKey(header);
+    if (key === "aperture" && normalizeTemplateHeader(header) === "조리개") {
       const aperture = normalizeAperture(value);
       addDistinct(values, "ap", aperture);
       if (/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value) && aperture) rawBareAperture = value;
-    } else if (header === "셔터") {
+    } else if (key === "aperture") {
+      addDistinct(values, "ap", normalizeAperture(value));
+    } else if (key === "shutter") {
       addDistinct(values, "sh", cleanShutter(value));
-    } else if (header === "노출 보정") {
+    } else if (key === "exposureCompensation") {
       if (value && value !== "미확정") addDistinct(values, "ev", value);
-    } else if (header === "촬영일") {
+    } else if (key === "shootingDate") {
       if (value) addDistinct(values, "date", value);
-    } else if (header === "메모") {
+    } else if (key === "note") {
       if (value) addDistinct(values, "note", value);
-    } else if (lower === "초점거리(mm)" || header === "초점거리") {
+    } else if (key === "focalLength") {
       addDistinct(values, "focal", cleanFocal(value));
-    } else if (header === "렌즈") {
+    } else if (key === "lens") {
       if (value) addDistinct(values, "lens", value);
-    } else if (header === "설정" || header === "노출") {
+    } else if (key === "settings") {
       parseSetting(value, values);
-    } else if (header === "피사체") {
+    } else if (key === "subject") {
       subject = value;
-    } else if (header === "컷 이름") {
+    } else if (key === "cutName") {
       explicitName = value;
     } else {
       const rollKey = canonicalRollKey(header);
@@ -193,6 +229,7 @@ export function parseMarkdownRecord(text, options = {}) {
   const unreadRaw = [];
   const cuts = [];
   const consumed = new Set();
+  const unknownColumns = [];
 
   function addCandidate(field, value, lineNumber) {
     const clean = usableRollValue(field, value);
@@ -236,9 +273,9 @@ export function parseMarkdownRecord(text, options = {}) {
       }
       const pair = line.match(/^\s*([^:]+):\s*(.*)$/);
       if (!pair) continue;
-      const field = canonicalRollKey(pair[1]);
+      const field = pair[1].trim().toLowerCase() === "roll_id" ? "name" : canonicalRollKey(pair[1]);
       if (field) addCandidate(field, pair[2], lineNumber);
-      else if (["title"].includes(pair[1].trim().toLowerCase())) unread.add(lineNumber);
+      else unread.add(lineNumber);
     }
     if (end < lines.length) consumed.add(end + 1);
   }
@@ -255,10 +292,12 @@ export function parseMarkdownRecord(text, options = {}) {
         rows.push({ cells: tableCells(lines[index]), line: index + 1, raw: lines[index] });
         index += 1;
       }
-      const numberHeader = headers.some((header) => ["번호", "#", "no"].includes(header.toLowerCase()));
+      const numberHeader = headers.some((header) => templateHeaderKey(header) === "number");
       const rollTable = headers.length === 2 && ["항목", "item"].includes(headers[0].toLowerCase());
       if (rollTable) {
-        for (const row of rows) {
+        const nestedHeader = rows.findIndex((row) => row.cells.length > 2 && templateHeaderKey(row.cells[0]) === "number");
+        const rollRows = nestedHeader < 0 ? rows : rows.slice(0, nestedHeader);
+        for (const row of rollRows) {
           const tableKey = stripMarkup(row.cells[0]);
           const field = tableKey.toLowerCase() === "roll_id" ? null : canonicalRollKey(tableKey);
           if (!field) {
@@ -268,7 +307,17 @@ export function parseMarkdownRecord(text, options = {}) {
             unread.add(row.line);
           } else addCandidate(field, row.cells[1], row.line);
         }
+        if (nestedHeader >= 0) {
+          const cutHeaders = rows[nestedHeader].cells;
+          cutHeaders.forEach((header) => { if (!templateHeaderKey(header)) addUnknown(unknownColumns, header); });
+          for (const row of rows.slice(nestedHeader + 1)) {
+            if (row.cells.every((cell) => /^:?-{3,}:?$/.test(cell))) continue;
+            const parsed = parseCutRow(cutHeaders, row.cells, row.line);
+            if (parsed.unread) unread.add(row.line); else cuts.push(parsed.cut);
+          }
+        }
       } else if (numberHeader) {
+        headers.forEach((header) => { if (!templateHeaderKey(header)) addUnknown(unknownColumns, header); });
         for (const row of rows) {
           const parsed = parseCutRow(headers, row.cells, row.line);
           if (parsed.unread) unread.add(row.line);
@@ -306,7 +355,7 @@ export function parseMarkdownRecord(text, options = {}) {
     if (values.length === 1) roll[field] = values[0];
     else entries.forEach((entry) => unread.add(entry.line));
   }
-  const result = { roll, cuts, unread: [...unread].sort((a, b) => a - b) };
+  const result = { roll, cuts, unread: [...unread].sort((a, b) => a - b), unknownColumns };
   if (unreadRaw.length) result.unreadRaw = unreadRaw;
   return result;
 }
@@ -316,13 +365,19 @@ export function parseCsvRecord(text, papa = globalThis.Papa) {
   const parsed = papa.parse(text, { skipEmptyLines: false });
   if (parsed.errors.length) throw new Error(`CSV를 읽지 못했어요: ${parsed.errors[0].message}`);
   const rows = parsed.data.map((row) => row.map((cell) => String(cell ?? "")));
-  const headerIndex = rows.findIndex((row) => row.some((cell) => ["번호", "#", "no"].includes(stripMarkup(cell).toLowerCase())));
-  if (headerIndex < 0) throw new Error("CSV에서 컷 번호 열을 찾지 못했어요.");
+  let afterBlank = false;
+  let headerIndex = -1;
+  for (let index = 0; index < rows.length; index += 1) {
+    if (rows[index].every((cell) => !cell.trim())) { afterBlank = true; continue; }
+    if (afterBlank) { headerIndex = index; break; }
+  }
 
   const roll = {};
   const unread = [];
   const unreadRaw = [];
-  for (let index = 0; index < headerIndex; index += 1) {
+  const unknownColumns = [];
+  const rollEnd = headerIndex < 0 ? rows.length : headerIndex;
+  for (let index = 0; index < rollEnd; index += 1) {
     const row = rows[index];
     if (row.every((cell) => !cell.trim())) continue;
     const key = canonicalRollKey(row[0]);
@@ -334,18 +389,21 @@ export function parseCsvRecord(text, papa = globalThis.Papa) {
     }
   }
 
-  const headers = rows[headerIndex].map(stripMarkup);
   const cuts = [];
-  for (let index = headerIndex + 1; index < rows.length; index += 1) {
-    const row = rows[index];
-    if (row.every((cell) => !cell.trim())) continue;
-    const result = parseCutRow(headers, row, index + 1, { includeApertureExif: false });
-    if (result.unread) {
-      unread.push(index + 1);
-      unreadRaw.push(row.join(","));
-    } else cuts.push(result.cut);
+  if (headerIndex >= 0) {
+    const headers = rows[headerIndex].map(stripMarkup);
+    headers.forEach((header) => { if (!templateHeaderKey(header)) addUnknown(unknownColumns, header); });
+    for (let index = headerIndex + 1; index < rows.length; index += 1) {
+      const row = rows[index];
+      if (row.every((cell) => !cell.trim())) continue;
+      const result = parseCutRow(headers, row, index + 1, { includeApertureExif: false });
+      if (result.unread) {
+        unread.push(index + 1);
+        unreadRaw.push(row.join(","));
+      } else cuts.push(result.cut);
+    }
   }
-  const result = { roll, cuts, unread };
+  const result = { roll, cuts, unread, unknownColumns };
   if (unreadRaw.length) result.unreadRaw = unreadRaw;
   return result;
 }

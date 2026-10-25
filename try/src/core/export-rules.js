@@ -7,7 +7,9 @@ const reasonLine = {
 };
 
 const MAX_FILENAME_BYTES = 255;
+const MAX_OPTIONAL_IDENTIFIER_GRAPHEMES = 200;
 const textEncoder = new TextEncoder();
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const whiteSpace = new Set([
   ...Array.from({ length: 5 }, (_, index) => 0x0009 + index),
   0x0020, 0x0085, 0x00a0, 0x1680,
@@ -63,6 +65,13 @@ export function checkCutName(raw) {
   if (!value) return { result: "valid", value: null };
   const offendingCodePoint = deniedCodePoint(value);
   if (offendingCodePoint !== null) return { result: "invalid", reason: "denied_character", offendingCodePoint };
+  let graphemeCount = 0;
+  for (const _segment of graphemeSegmenter.segment(value)) {
+    graphemeCount += 1;
+    if (graphemeCount > MAX_OPTIONAL_IDENTIFIER_GRAPHEMES) {
+      return { result: "invalid", reason: "too_long" };
+    }
+  }
   return { result: "valid", value };
 }
 
