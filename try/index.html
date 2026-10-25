@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; img-src 'self' blob: data:; style-src 'self'; script-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>AfterDev 웹 체험판</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="brand-lockup">
+      <img class="app-icon" src="./assets/app-icon.png" width="56" height="56" alt="">
+      <div>
+        <p class="brand-name">현상후 AfterDev</p>
+        <p class="preview-label">브라우저 체험판</p>
+      </div>
+    </header>
+
+    <section id="start-screen" class="screen" data-screen="start">
+      <header class="start-heading">
+        <h1>사진에 촬영 정보를 넣어요</h1>
+        <p class="lede">현상소 ZIP과 촬영 기록을 이 브라우저 안에서만 처리해요.</p>
+        <p class="preview-note">새로 고침하면 지금 작업은 사라져요.</p>
+      </header>
+      <section class="input-section" aria-labelledby="zip-title">
+        <h2 id="zip-title">스캔</h2>
+        <div class="info-card input-card">
+          <p class="input-label">현상소 ZIP</p>
+          <label class="drop-zone" id="drop-zone" for="zip-input">
+            <span>ZIP을 고르거나 여기로 끌어 놓아요</span>
+            <small>JPEG·PNG 사진을 가져와요</small>
+          </label>
+          <input id="zip-input" type="file" accept=".zip,application/zip" hidden>
+        </div>
+      </section>
+      <p class="status" id="status" role="status">ZIP을 기다리고 있어요.</p>
+      <section class="example-start" aria-labelledby="shifted-example-title">
+        <h2 id="shifted-example-title">번호가 밀린 롤</h2>
+        <p>합성 36컷 ZIP과 두 장 밀린 합성 촬영 기록으로 확인해요.</p>
+        <button id="shifted-demo" class="secondary" type="button">번호가 밀린 롤로 해 보기</button>
+      </section>
+    </section>
+
+    <section id="roll-screen" class="screen" data-screen="roll" hidden>
+      <header class="detail-header">
+        <div id="roll-normal-header">
+          <div class="detail-title-row">
+            <button class="back-button" type="button" data-go-start aria-label="처음으로">‹</button>
+            <h1 id="roll-title">film001</h1>
+            <button id="roll-menu" class="menu-button" type="button" aria-label="롤 메뉴">•••</button>
+          </div>
+          <p class="detail-subtitle"><span id="photo-count">0</span>컷</p>
+          <section id="received-zip-note" class="received-zip-note" aria-label="받은 압축 파일 안내">
+            <p>현상소에서 받은 압축 파일은 시간이 지나면 지워질 수 있어요.</p>
+            <button class="text-button" type="button" data-app-preview="zip-backup">앱에서는 백업할 수 있어요</button>
+          </section>
+        </div>
+        <div id="bulk-edit-header" class="bulk-edit-header" hidden>
+          <button id="bulk-header-back" class="back-button" type="button" aria-label="여러 컷 편집 끝내기">‹</button>
+          <strong id="bulk-edit-title">여러 컷 편집 · 0개 선택</strong>
+          <button id="bulk-toggle-all" type="button">전체 선택</button>
+        </div>
+      </header>
+      <button id="bulk-result" class="bulk-result" type="button" role="status" aria-label="결과 알림 닫기" hidden></button>
+      <div id="roll-controls" class="roll-controls" aria-label="롤 보기 방식">
+        <div class="segmented" id="presentation-toggle">
+          <button class="selected" type="button" data-presentation="grid">그리드</button>
+          <button type="button" data-presentation="list">목록</button>
+        </div>
+        <div class="segmented compact" id="column-toggle">
+          <button class="selected" type="button" data-columns="2">2</button>
+          <button type="button" data-columns="3">3</button>
+        </div>
+      </div>
+      <div id="cut-list" class="cut-grid columns-2"></div>
+      <div class="bottom-spacer"></div>
+      <footer class="bottom-bar roll-bottom-bar">
+        <div id="roll-idle-actions">
+          <div class="roll-secondary-actions">
+            <button id="roll-info-button" class="text-button" type="button">롤 정보</button>
+            <button id="open-bulk-edit" class="text-button" type="button">여러 컷 편집</button>
+            <button id="open-contact-sheet" class="text-button" type="button">모아 보기</button>
+          </div>
+          <button class="primary" type="button" data-open-export>내보내기</button>
+        </div>
+        <div id="bulk-edit-controls" hidden>
+          <div class="bulk-orientation-actions" aria-label="고른 컷 사진 방향">
+            <button type="button" data-bulk-orientation="left">↶<span>왼쪽</span></button>
+            <button type="button" data-bulk-orientation="right">↷<span>오른쪽</span></button>
+            <button type="button" data-bulk-orientation="flip">↔<span>좌우 반전</span></button>
+          </div>
+          <div class="bulk-action-grid">
+            <button id="bulk-shooting-info" type="button">촬영 정보 넣기</button>
+            <button id="bulk-number" type="button">번호 바꾸기</button>
+            <button id="bulk-date" type="button">촬영일</button>
+            <button id="bulk-move" type="button">옮기기</button>
+            <button id="bulk-reverse" type="button">순서 뒤집기</button>
+          </div>
+          <div class="bulk-terminal-actions">
+            <button id="bulk-finish" class="secondary" type="button">끝내기</button>
+            <button id="bulk-export" class="primary" type="button">내보내기</button>
+          </div>
+        </div>
+      </footer>
+    </section>
+
+    <section id="bulk-info-screen" class="screen" data-screen="bulk-info" hidden>
+      <header class="detail-header">
+        <div class="detail-title-row">
+          <button id="bulk-info-back" class="back-button" type="button" aria-label="여러 컷 편집으로 돌아가기">‹</button>
+          <h1 id="bulk-info-title">고른 0컷에 넣기</h1>
+        </div>
+      </header>
+      <div id="bulk-info-rows" class="cut-detail-rows"></div>
+      <div class="bottom-spacer"></div>
+      <footer class="bottom-bar">
+        <button id="bulk-info-done" class="primary" type="button" disabled>완료</button>
+      </footer>
+    </section>
+
+    <section id="contact-screen" class="screen" data-screen="contact" hidden>
+      <header class="detail-header">
+        <div class="detail-title-row">
+          <button id="contact-back" class="back-button" type="button" aria-label="롤로 돌아가기">‹</button>
+          <h1>모아 보기</h1>
+        </div>
+        <p id="contact-roll-name" class="detail-subtitle">film001</p>
+      </header>
+      <div id="contact-preview" class="contact-preview">
+        <p id="contact-loading">이미지를 만드는 중이에요.</p>
+        <canvas id="contact-canvas" aria-label="모아 보기 미리보기" hidden></canvas>
+      </div>
+      <div id="contact-limit" class="contact-limit" hidden>
+        <p>이 롤은 웹에서 원본 크기로 모아 보기를 만들기엔 커요.</p>
+        <button id="contact-app-preview" class="text-button" type="button" data-app-preview="contact" hidden>앱에서는 더 큰 모아 보기도 만들 수 있어요</button>
+      </div>
+      <section class="contact-settings" aria-labelledby="contact-export-title">
+        <h2 id="contact-export-title">내보내기</h2>
+        <label class="switch-row">
+          <input id="contact-header-enabled" type="checkbox" checked>
+          <span>모아 보기 머리글</span>
+        </label>
+        <div class="segmented-row">
+          <span class="setting-label">형식</span>
+          <div id="contact-format" class="segmented three" aria-label="모아 보기 형식">
+            <button class="selected" type="button" data-contact-format="jpeg">JPEG</button>
+            <button type="button" data-contact-format="webp">WebP</button>
+            <button type="button" data-contact-format="png">PNG</button>
+          </div>
+        </div>
+        <div id="contact-quality-row" class="segmented-row">
+          <span class="setting-label">품질</span>
+          <div id="contact-quality" class="segmented three" aria-label="모아 보기 품질">
+            <button class="selected" type="button" data-contact-quality="high">고화질</button>
+            <button type="button" data-contact-quality="balanced">균형</button>
+            <button type="button" data-contact-quality="small">작은 파일</button>
+          </div>
+        </div>
+        <p id="contact-result" class="contact-result" role="status"></p>
+      </section>
+      <div class="contact-bottom-spacer"></div>
+      <footer class="bottom-bar">
+        <div class="result-actions">
+          <button id="contact-share" class="secondary" type="button">공유하기</button>
+          <button id="contact-save" class="primary" type="button">이미지로 저장</button>
+        </div>
+      </footer>
+    </section>
+
+    <section id="cut-screen" class="screen" data-screen="cut" hidden>
+      <header class="detail-header">
+        <div class="detail-title-row">
+          <button id="cut-back" class="back-button" type="button" aria-label="롤로 돌아가기">‹</button>
+          <h1 id="cut-position">01 / 01</h1>
+          <button class="menu-button" type="button" aria-label="컷 메뉴">•••</button>
+        </div>
+        <p id="cut-roll-name" class="detail-subtitle">film001</p>
+      </header>
+      <div id="cut-photo" class="cut-photo" aria-live="polite"></div>
+      <div class="orientation-actions" aria-label="사진 방향">
+        <button type="button" data-orientation="left">↶<span>왼쪽</span></button>
+        <button type="button" data-orientation="right">↷<span>오른쪽</span></button>
+        <button type="button" data-orientation="flip">↔<span>좌우 반전</span></button>
+      </div>
+      <section class="detail-group" aria-labelledby="cut-info-title">
+        <h2 id="cut-info-title">컷 정보</h2>
+        <div id="cut-info-card" class="cut-detail-rows"></div>
+      </section>
+      <section class="detail-group" aria-labelledby="scan-info-title">
+        <h2 id="scan-info-title">스캔 정보</h2>
+        <div id="scan-info-card" class="cut-detail-rows"></div>
+      </section>
+      <section class="detail-group" aria-labelledby="shooting-info-title">
+        <h2 id="shooting-info-title">촬영 정보</h2>
+        <div id="roll-info-hint" class="roll-info-hint" hidden>
+          <span>카메라·필름은 롤 정보에 한 번만 넣으면 모든 컷에 들어가요.</span>
+          <button class="text-button" type="button" data-open-roll-info>롤 정보 넣기</button>
+        </div>
+        <div id="shooting-info-card" class="cut-detail-rows"></div>
+      </section>
+      <div class="bottom-spacer cut-bottom-spacer"></div>
+      <footer class="bottom-bar cut-bottom-bar">
+        <div class="cut-step-row">
+          <button id="previous-cut" class="step-button" type="button">‹ 이전 컷</button>
+          <button id="next-cut" class="step-button" type="button">다음 컷 ›</button>
+        </div>
+        <button class="primary" type="button" data-open-export>이 컷 내보내기</button>
+      </footer>
+    </section>
+
+    <section id="field-screen" class="screen" data-screen="field" hidden>
+      <header class="detail-header">
+        <div class="detail-title-row">
+          <button id="field-back" class="back-button" type="button" aria-label="이전 화면">‹</button>
+          <h1 id="field-title">카메라</h1>
+        </div>
+      </header>
+      <div class="field-editor-body">
+        <label class="editor-field">
+          <span class="visually-hidden" id="field-input-label">카메라</span>
+          <input id="field-input" aria-labelledby="field-input-label" autocomplete="off">
+        </label>
+        <div id="field-choices" class="choice-buttons" hidden></div>
+        <p id="field-message" class="field-message" hidden></p>
+        <section id="recent-section" class="recent-section" hidden>
+          <h2>최근에 쓴 값</h2>
+          <div id="recent-values" class="info-card recent-values"></div>
+        </section>
+        <button id="field-revert" class="text-button revert-button" type="button" hidden>롤 값으로 되돌리기</button>
+      </div>
+      <div class="bottom-spacer"></div>
+      <footer class="bottom-bar">
+        <button id="field-done" class="primary" type="button">완료</button>
+      </footer>
+    </section>
+
+    <section id="roll-info-screen" class="screen" data-screen="roll-info" hidden>
+      <header class="detail-header roll-info-header">
+        <div class="detail-title-row">
+          <button id="roll-info-back" class="back-button" type="button" aria-label="이전 화면">‹</button>
+          <h1>롤 정보</h1>
+          <button id="record-examples" class="header-action" type="button">예시 파일 받기</button>
+        </div>
+      </header>
+      <div class="record-entry-row">
+        <button id="record-import" class="record-button secondary" type="button">촬영 기록 불러오기</button>
+        <button id="record-guide-info" class="record-guide-info" type="button" aria-label="촬영 기록 불러오기 안내">ⓘ</button>
+      </div>
+      <p id="record-name" class="filename">촬영 기록 없이도 계속할 수 있어요.</p>
+      <p id="record-unmatched" class="record-unmatched" hidden></p>
+      <div id="roll-info-groups"></div>
+      <p id="roll-info-help" class="roll-info-help">롤 전체에 기본으로 적용돼요. 조리개·셔터·노출 보정은 컷마다 입력해요.</p>
+      <div class="bottom-spacer"></div>
+      <footer class="bottom-bar">
+        <button id="roll-info-done" class="primary" type="button">완료</button>
+      </footer>
+    </section>
+
+    <section id="record-confirm-screen" class="screen record-confirm-screen" data-screen="record-confirm" hidden>
+      <div class="record-confirm-scroll">
+        <h1>촬영 기록 불러오기</h1>
+        <p id="record-confirm-name" class="record-confirm-name"></p>
+        <section class="template-section" aria-labelledby="record-roll-values-title">
+          <h2 id="record-roll-values-title">롤 정보에 들어갈 값</h2>
+          <div id="record-roll-values" class="template-lines"></div>
+        </section>
+        <section class="template-section" aria-labelledby="record-cut-values-title">
+          <h2 id="record-cut-values-title">컷에 들어갈 값</h2>
+          <div id="record-cut-values" class="template-lines template-cut-lines"></div>
+        </section>
+        <div id="record-confirm-notices" class="record-confirm-notices"></div>
+        <div id="record-unread-lines" class="record-unread-lines"></div>
+      </div>
+      <div class="record-confirm-spacer"></div>
+      <footer class="bottom-bar">
+        <div class="result-actions">
+          <button id="record-cancel" class="secondary" type="button">취소</button>
+          <button id="record-confirm" class="primary" type="button">불러오기</button>
+        </div>
+      </footer>
+    </section>
+
+    <section id="export-screen" class="screen" data-screen="export" hidden>
+      <header class="detail-header">
+        <div class="detail-title-row">
+          <button id="export-back" class="back-button" type="button" aria-label="롤로 돌아가기">‹</button>
+          <h1>내보내기</h1>
+        </div>
+      </header>
+      <p class="status export-status" id="export-status" role="status"></p>
+      <p class="export-reasons" id="export-reasons" hidden></p>
+      <figure id="frame-preview-wrap" class="frame-preview">
+        <p id="preview-question">사진 아래에 카메라·필름 같은 촬영 정보를 넣을 수 있어요.<br>아래에서 고르면 여기에 미리보기가 나와요.</p>
+        <button id="large-photo-app" class="text-button" type="button" data-app-preview="large" hidden>앱에서는 큰 사진에도 액자를 넣을 수 있어요</button>
+        <canvas id="frame-preview" aria-label="촬영 정보 프레임 미리보기"></canvas>
+      </figure>
+      <p id="preview-helper" class="preview-helper" aria-hidden="true">입력하신 정보는 모두 사진 정보에 들어가요.</p>
+      <fieldset class="frame-choice" aria-label="촬영 정보 프레임">
+        <legend class="visually-hidden">촬영 정보 프레임</legend>
+        <div class="mode-options">
+          <label><input type="radio" name="frame-mode" value="off"><span>사진만</span></label>
+          <label><input type="radio" name="frame-mode" value="simple"><span>간단히</span></label>
+          <label><input type="radio" name="frame-mode" value="detail"><span>자세히</span></label>
+        </div>
+      </fieldset>
+      <label id="roll-frame-row" class="switch-row" hidden>
+        <input id="roll-frame-label" type="checkbox">
+        <span>롤·프레임 번호 표시</span>
+      </label>
+      <div class="export-settings">
+        <div class="segmented-row">
+          <span class="setting-label">형식</span>
+          <div id="format-toggle" class="segmented three" aria-label="형식">
+            <button class="selected" type="button" data-format="jpeg">JPEG</button>
+            <button type="button" data-format="webp">WebP<small id="webp-app-badge" hidden>앱에서는 WebP로 저장할 수 있어요</small></button>
+            <button type="button" data-format="png">PNG</button>
+          </div>
+        </div>
+        <div id="quality-row" class="segmented-row">
+          <span class="setting-label">품질</span>
+          <div id="quality-toggle" class="segmented three" aria-label="품질">
+            <button class="selected" type="button" data-quality="high">고화질</button>
+            <button type="button" data-quality="balanced">균형</button>
+            <button type="button" data-quality="small">작은 파일</button>
+            <button type="button" data-quality="lossless" hidden>무손실</button>
+          </div>
+        </div>
+        <div class="segmented-row">
+          <span class="setting-label">번호 자릿수</span>
+          <div id="digits-toggle" class="segmented three" aria-label="번호 자릿수">
+            <button type="button" data-digits="1">1자리</button>
+            <button class="selected" type="button" data-digits="2">2자리</button>
+            <button type="button" data-digits="3">3자리</button>
+          </div>
+        </div>
+      </div>
+      <section class="export-cuts" aria-labelledby="export-cuts-title">
+        <div class="section-title-row">
+          <h2 id="export-cuts-title">내보낼 컷</h2>
+          <button id="toggle-all-cuts" class="text-button" type="button">전체 해제</button>
+        </div>
+        <p id="selected-cut-count" class="selected-cut-count"></p>
+        <div id="export-cut-list" class="export-cut-list"></div>
+      </section>
+      <div class="export-bottom-spacer"></div>
+      <footer class="bottom-bar export-bottom-bar">
+        <p class="web-save-location">웹: 내려받기 또는 공유 창으로 저장해요.</p>
+        <p id="export-blocker" class="export-blocker">사진만·간단히·자세히 중에서 하나를 골라 주세요.</p>
+        <button id="export-button" class="primary" type="button" disabled>전체 0장 내보내기</button>
+      </footer>
+    </section>
+
+    <section id="result-screen" class="screen" data-screen="result" hidden>
+      <div class="result-heading">
+        <span class="success-mark" aria-hidden="true">✓</span>
+        <h1 id="result-title">사진 0장을 내려받았어요.</h1>
+        <p id="export-elapsed" class="elapsed"></p>
+      </div>
+      <section class="result-files" aria-labelledby="result-files-title">
+        <div class="section-title-row">
+          <h2 id="result-files-title">공유할 파일 · 0개 선택</h2>
+          <button id="toggle-all-results" class="text-button" type="button">전체 해제</button>
+        </div>
+        <div id="result-file-list" class="result-file-list"></div>
+      </section>
+      <div class="web-share-note">
+        <p id="share-guidance">공유 창이 뜨면 ‘이미지 저장’ 또는 ‘사진’·‘갤러리’를 눌러 주세요. 사진첩에서 보이는 순서는 달라질 수 있어요.</p>
+        <div class="app-capability-row">
+          <p>앱에서는 한 번에 롤 이름 앨범으로 1번부터 차례대로 들어가요.</p>
+          <button class="text-button app-preview-button" type="button" data-app-preview="album" hidden>앱에서는 앨범에 바로 넣을 수 있어요</button>
+        </div>
+        <p id="share-progress" class="quiet" role="status" hidden></p>
+      </div>
+      <div class="result-bottom-spacer"></div>
+      <footer class="bottom-bar result-bottom-bar">
+        <div class="result-actions">
+          <button id="share-button" class="secondary" type="button">사진첩에 저장</button>
+          <button id="result-done" class="primary" type="button">완료</button>
+        </div>
+      </footer>
+    </section>
+
+    <input id="record-input" type="file" accept=".md,.markdown,.csv,.txt,text/markdown,text/csv,text/plain" hidden>
+    <input id="roll-name" value="film001" hidden>
+  </main>
+
+  <div id="dialog-layer" class="dialog-layer" hidden>
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <h2 id="dialog-title"></h2>
+      <p id="dialog-body"></p>
+      <div id="dialog-options" class="dialog-options" hidden></div>
+      <div class="dialog-actions">
+        <button id="dialog-cancel" class="dialog-safe" type="button"></button>
+        <button id="dialog-confirm" class="dialog-confirm" type="button"></button>
+      </div>
+    </section>
+  </div>
+
+  <div id="example-sheet-layer" class="sheet-layer" hidden>
+    <section class="example-sheet" role="dialog" aria-modal="true" aria-labelledby="example-sheet-title">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <h2 id="example-sheet-title">예시 파일 받기</h2>
+      <a href="./assets/examples/shooting_record_example_ko.md" download="shooting_record_example_ko.md">
+        <strong>마크다운 예시</strong>
+        <small>텍스트 편집기에서 열어요</small>
+      </a>
+      <a href="./assets/examples/shooting_record_example_ko.csv" download="shooting_record_example_ko.csv">
+        <strong>CSV 예시</strong>
+        <small>스프레드시트에서 열어요</small>
+      </a>
+      <button id="example-sheet-close" class="text-button" type="button">닫기</button>
+    </section>
+  </div>
+
+  <div id="app-preview-layer" class="app-preview-layer" hidden>
+    <section class="app-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="app-preview-title">
+      <div class="app-preview-heading">
+        <div>
+          <p class="app-preview-kicker">앱에서는 이렇게 돼요</p>
+          <h2 id="app-preview-title">앱 시안</h2>
+        </div>
+        <button id="app-preview-close" class="menu-button" type="button" aria-label="닫기">×</button>
+      </div>
+      <img id="app-preview-image" alt="합성 자료로 만든 앱 화면">
+      <p id="app-preview-caption"></p>
+    </section>
+  </div>
+
+  <script src="./src/vendor/fflate-0.8.3.js"></script>
+  <script src="./src/vendor/papaparse-5.7.0.js"></script>
+  <script src="./src/vendor/piexifjs-1.0.6.js"></script>
+  <script src="./src/vendor/exifr-7.1.3.js"></script>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
