@@ -1,4 +1,4 @@
-import { makeZip } from "../adapters/zip.js";
+import { createZipWriter, makeZip } from "../adapters/zip.js";
 import { writePhotoMetadata } from "../adapters/exif.js";
 import { makeExportFilename } from "./export-rules.js";
 import { evaluateInformationFrameLimit, renderInformationFrame } from "./information-frame.js";
@@ -109,20 +109,32 @@ function decodeForExport(item) {
 
 async function photoCanvas(item) {
   const image = await decodeForExport(item);
-  const correction = item.correction ?? { turns: 0, flipped: false };
-  const sideways = Math.abs(correction.turns) % 2 === 1;
   const canvas = document.createElement("canvas");
-  canvas.width = sideways ? image.height : image.width;
-  canvas.height = sideways ? image.width : image.height;
-  const context = canvas.getContext("2d", { alpha: false });
-  context.fillStyle = "white";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.translate(canvas.width / 2, canvas.height / 2);
-  context.scale(correction.flipped ? -1 : 1, 1);
-  context.rotate(correction.turns * Math.PI / 2);
-  context.drawImage(image, -image.width / 2, -image.height / 2);
-  if (typeof image.close === "function") image.close();
-  return canvas;
+  try {
+    const correction = item.correction ?? { turns: 0, flipped: false };
+    const sideways = Math.abs(correction.turns) % 2 === 1;
+    canvas.width = sideways ? image.height : image.width;
+    canvas.height = sideways ? image.width : image.height;
+    const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    context.fillStyle = "white";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.translate(canvas.width / 2, canvas.height / 2);
+    context.scale(correction.flipped ? -1 : 1, 1);
+    context.rotate(correction.turns * Math.PI / 2);
+    context.drawImage(image, -image.width / 2, -image.height / 2);
+    return canvas;
+  } catch (error) {
+    releaseCanvas(canvas);
+    throw error;
+  } finally {
+    if (typeof image.close === "function") image.close();
+  }
+}
+
+/** A canvas keeps its pixel memory until it is collected; shrinking it to 0x0 gives that memory back right away. */
+function releaseCanvas(canvas) {
+  canvas.width = 0;
+  canvas.height = 0;
 }
 
 function canvasBytes(canvas, type, quality) {
@@ -135,7 +147,12 @@ function canvasBytes(canvas, type, quality) {
   }, type, quality));
 }
 
-/** The browser export screen's real ZIP output. It keeps JPEG photo-only bytes when possible and uses Canvas only for a requested conversion or frame. */
+/**
+ * The browser export screen's real ZIP output. It keeps JPEG photo-only bytes when possible and uses Canvas only for
+ * a requested conversion or frame. Each file goes into the ZIP as soon as it exists and is kept only as a Blob
+ * (`blob`, `size`) for the result screen; every canvas is released right after its bytes are made.
+ * Returns `{ zip: Blob, files, photoOnlyFrames }`.
+ */
 export async function exportConfiguredZip(items, {
   rollName = "roll", mode = "off", format = "jpeg", quality = 0.9, width = 2,
   includeCut = false, rollFrameLabel = false, rgbHistogram = false, paddingRatio = "original",
@@ -143,6 +160,7 @@ export async function exportConfiguredZip(items, {
   const type = { jpeg: "image/jpeg", webp: "image/webp", png: "image/png" }[format];
   const extension = { jpeg: "jpg", webp: "webp", png: "png" }[format];
   if (!type) throw new Error("내보낼 사진 형식을 고르지 못했어요.");
+  const writer = createZipWriter();
   const files = [];
   const photoOnlyFrames = [];
   for (const item of items) {
@@ -158,28 +176,38 @@ export async function exportConfiguredZip(items, {
 
     let bytes;
     let outputName = nameResult.name;
+    let shown = { width: item.width, height: item.height };
     const correction = item.correction ?? { turns: 0, flipped: false };
     const unchanged = correction.turns % 4 === 0 && !correction.flipped;
     if (actualMode === "off" && format === "jpeg" && item.format !== "png" && unchanged) {
       bytes = metadataOnlyBytes(item, metadata);
     } else {
-      let canvas = actualMode === "off"
-        ? await photoCanvas(item)
-        : (await renderInformationFrame(item, metadata, actualMode, item.frame, quality, rollFrameLabel, rgbHistogram)).canvas;
-      if (actualMode !== "off") {
-        canvas = applyPaddingRatioCanvas(canvas, paddingRatio);
-        outputName = applyPaddingRatioFilename(outputName, paddingRatio);
+      const made = [];
+      try {
+        let canvas = actualMode === "off"
+          ? await photoCanvas(item)
+          : (await renderInformationFrame(item, metadata, actualMode, item.frame, quality, rollFrameLabel, rgbHistogram)).canvas;
+        made.push(canvas);
+        if (actualMode !== "off") {
+          canvas = applyPaddingRatioCanvas(canvas, paddingRatio);
+          if (!made.includes(canvas)) made.push(canvas);
+          outputName = applyPaddingRatioFilename(outputName, paddingRatio);
+        }
+        shown = { width: canvas.width, height: canvas.height };
+        bytes = await canvasBytes(canvas, type, quality);
+      } finally {
+        for (const canvas of made) releaseCanvas(canvas);
       }
-      bytes = await canvasBytes(canvas, type, quality);
       if (format === "jpeg") bytes = writePhotoMetadata(bytes, metadata);
     }
-    files.push({ name: outputName, bytes, type });
+    writer.add(outputName, bytes);
+    files.push({ name: outputName, type, blob: new Blob([bytes], { type }), size: bytes.length, ...shown });
   }
-  return { bytes: makeZip(files), files, photoOnlyFrames };
+  return { zip: writer.finish(), files, photoOnlyFrames };
 }
 
 export function downloadBytes(bytes, name, type = "application/zip") {
-  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const url = URL.createObjectURL(bytes instanceof Blob ? bytes : new Blob([bytes], { type }));
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = name;

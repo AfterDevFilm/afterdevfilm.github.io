@@ -1051,7 +1051,8 @@ h2 {
   overflow: hidden;
 }
 .export-cut-row-photo canvas,
-.result-thumb img {
+.result-thumb img,
+.result-thumb canvas {
   display: block;
   width: auto;
   max-width: 56px;

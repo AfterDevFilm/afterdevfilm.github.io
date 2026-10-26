@@ -1,4 +1,4 @@
-import { readPhotoZip, WEB_ZIP_LIMITS, ZIP_ERROR_KIND_LIMIT } from "./adapters/zip.js";
+import { readPhotoZipBlob, WEB_ZIP_LIMITS, ZIP_ERROR_KIND_LIMIT } from "./adapters/zip.js";
 import { parseCsvRecord, parseMarkdownRecord, unknownColumnsLine } from "./core/record.js";
 import { matchCutsToPhotos } from "./core/match.js";
 import { applyPaddingRatioCanvas, downloadBytes, exportConfiguredZip } from "./core/export.js";
@@ -7,6 +7,7 @@ import { evaluateInformationFrameLimit, renderInformationFrame, showsRGBHistogra
 import { defaultRollName } from "./core/default-roll-name.js";
 import { resolveCutField, resolveCutRecord } from "./core/roll-values.js";
 import { groupShareFiles, makeShareFiles } from "./core/share.js";
+import { shownPhotoDimensions } from "./core/image-format.js";
 import { normalizeBulb, sharedCopy, shouldShowExifReason } from "./core/value-rules.js";
 import { inputSuggestionAsk } from "./core/input-suggestion.js";
 import {
@@ -16,6 +17,9 @@ import { contactSheetBlob, evaluateContactSheetLimit, renderContactSheet } from 
 import {
   TEMPLATE_ROLL_FIELDS, cutNameRejectedLine, rollMissingNumberLine, templateCutLine,
 } from "./core/template-import.js";
+import {
+  ThumbnailBitmapCache, makeThumbnailBitmap, renderCachedThumbnail,
+} from "./core/thumbnail-cache.js";
 
 const shootingFields = [
   { key: "camera", label: "카메라", recent: true, placeholder: "예: Nikon FM2" },
@@ -53,6 +57,8 @@ const state = {
   recordFileName: "", exampleActive: false,
   appPreviewAvailable: { album: false, webp: true, large: true, contact: true, "zip-backup": true },
 };
+const thumbnailCache = new ThumbnailBitmapCache();
+const thumbnailRenderVersions = new WeakMap();
 
 const appPreviews = {
   album: {
@@ -191,28 +197,23 @@ function photoCorrection(item) {
 async function renderPhoto(container, item, maximum, token, label) {
   container.textContent = "미리보기";
   container.dataset.thumbnailState = "loading";
+  const version = (thumbnailRenderVersions.get(container) ?? 0) + 1;
+  thumbnailRenderVersions.set(container, version);
   try {
-    const bitmap = await createImageBitmap(photoBlob(item), { imageOrientation: "from-image" });
-    if (token !== state.thumbnailToken || !container.isConnected) { bitmap.close(); return; }
     const correction = photoCorrection(item);
-    const sideways = Math.abs(correction.turns) % 2 === 1;
-    const sourceWidth = sideways ? bitmap.height : bitmap.width;
-    const sourceHeight = sideways ? bitmap.width : bitmap.height;
-    const scale = Math.min(maximum / sourceWidth, maximum / sourceHeight, 1);
-    const width = Math.max(1, Math.round(sourceWidth * scale));
-    const height = Math.max(1, Math.round(sourceHeight * scale));
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
     canvas.setAttribute("aria-label", label);
-    const context = canvas.getContext("2d");
-    context.translate(width / 2, height / 2);
-    context.scale(correction.flipped ? -1 : 1, 1);
-    context.rotate(correction.turns * Math.PI / 2);
-    const drawWidth = Math.round(bitmap.width * scale);
-    const drawHeight = Math.round(bitmap.height * scale);
-    context.drawImage(bitmap, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-    bitmap.close();
+    await renderCachedThumbnail({
+      cache: thumbnailCache,
+      key: item.cutId,
+      load: async () => makeThumbnailBitmap(() => photoBlob(item), {
+        dimensions: await shownPhotoDimensions(item.bytes, item.width, item.height, item.format),
+      }),
+      canvas,
+      maximum,
+      correction,
+    });
+    if (token !== state.thumbnailToken || !container.isConnected || thumbnailRenderVersions.get(container) !== version) return;
     container.replaceChildren(canvas);
     container.dataset.thumbnailState = "ready";
   } catch {
@@ -246,6 +247,7 @@ function renderRoll() {
     if (!state.bulkEditing) button.addEventListener("click", () => openCut(index));
     const photo = document.createElement("div");
     photo.className = shownPresentation === "grid" ? "grid-photo" : "list-photo";
+    photo.dataset.cutId = item.cutId;
     renderPhoto(photo, item, shownPresentation === "grid" ? 150 : 72, token, `${item.frame}번 컷 미리보기`);
     if (shownPresentation === "grid") {
       const number = document.createElement("span");
@@ -969,7 +971,8 @@ function applyBulkPositions(positions) {
 }
 
 function rotateBulk(kind) {
-  for (const item of selectedBulkItems()) {
+  const selected = selectedBulkItems();
+  for (const item of selected) {
     const current = photoCorrection(item);
     const next = { ...current };
     if (kind === "left") next.turns = (next.turns + 3) % 4;
@@ -980,7 +983,12 @@ function rotateBulk(kind) {
   state.bulkAfterAction = true;
   state.bulkMessage = "";
   invalidateShareSession();
-  renderRoll();
+  const token = state.thumbnailToken;
+  const photos = new Map([...cutList.querySelectorAll(".list-photo")].map((photo) => [photo.dataset.cutId, photo]));
+  for (const item of selected) {
+    const photo = photos.get(item.cutId);
+    if (photo) renderPhoto(photo, item, 72, token, `${item.frame}번 컷 미리보기`);
+  }
 }
 
 function openBulkNumberMenu() {
@@ -1110,7 +1118,9 @@ async function openContactSheet() {
 async function receiveZip(file, { askRollInfo = true } = {}) {
   try {
     setStatus("ZIP을 읽고 있어요.", false, startStatus);
-    state.photos = readPhotoZip(new Uint8Array(await file.arrayBuffer()));
+    const photos = await readPhotoZipBlob(file);
+    thumbnailCache.clear();
+    state.photos = photos;
     state.exampleActive = false;
     state.cutOrder = [];
     state.frameByCut = {};
@@ -1134,6 +1144,7 @@ async function receiveZip(file, { askRollInfo = true } = {}) {
     }
     return true;
   } catch (error) {
+    thumbnailCache.clear();
     state.photos = [];
     refreshItems();
     showScreen("start");
@@ -1299,6 +1310,44 @@ function openAppPreview(kind) {
   byId("app-preview-close").focus();
 }
 
+const RESULT_PREVIEW_EDGE = 112;
+
+/** Result rows show a small canvas drawn once per file (decoded at thumbnail size), not the full-size result. */
+function makeResultPreview(file) {
+  return (async () => {
+    const dimensions = await shownPhotoDimensions(file.blob, file.width, file.height, file.type === "image/jpeg" ? "jpeg" : "other");
+    const { bitmap } = await makeThumbnailBitmap(file.blob, { maxEdge: RESULT_PREVIEW_EDGE, dimensions });
+    try {
+      const scale = Math.min(RESULT_PREVIEW_EDGE / bitmap.width, RESULT_PREVIEW_EDGE / bitmap.height, 1);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return canvas;
+    } finally {
+      bitmap.close?.();
+    }
+  })();
+}
+
+function showResultPreview(file, slot) {
+  if (file.previewReleased) return;
+  file.preview ??= makeResultPreview(file);
+  file.preview.then((canvas) => {
+    if (file.previewReleased || !slot.isConnected) return;
+    slot.replaceChildren(canvas);
+  }, () => {});
+}
+
+/** Called when the result screen is left or replaced: previews and the result files are let go. */
+function releaseResult(result) {
+  for (const file of result?.files ?? []) {
+    file.previewReleased = true;
+    file.preview?.then((canvas) => { canvas.width = 0; canvas.height = 0; }, () => {});
+    file.preview = null;
+  }
+}
+
 function renderResult() {
   const result = state.result;
   const delivered = result.delivery === "share" ? result.shared : result.files.length;
@@ -1322,16 +1371,13 @@ function renderResult() {
     checkbox.addEventListener("change", () => { file.selected = checkbox.checked; renderResult(); });
     const thumb = document.createElement("span");
     thumb.className = "result-thumb";
-    const image = document.createElement("img");
-    image.src = file.previewUrl;
-    image.alt = "";
-    thumb.append(image);
+    showResultPreview(file, thumb);
     const text = document.createElement("span");
     text.className = "result-file-text";
     const name = document.createElement("strong");
     name.textContent = file.name;
     const detail = document.createElement("small");
-    detail.textContent = `${file.type.replace("image/", "").toUpperCase()} · ${Math.max(1, Math.round(file.bytes.length / 1024))}KB`;
+    detail.textContent = `${file.type.replace("image/", "").toUpperCase()} · ${Math.max(1, Math.round(file.size / 1024))}KB`;
     text.append(name, detail);
     row.append(checkbox, thumb, text);
     root.append(row);
@@ -1535,11 +1581,12 @@ exportButton.addEventListener("click", async () => {
     const output = await buildOutput();
     const archiveName = makeExportArchiveFilename(rollName);
     if (archiveName.result !== "name") throw new Error("내보낼 파일 이름을 만들지 못했어요.");
-    downloadBytes(output.bytes, archiveName.name);
+    downloadBytes(output.zip, archiveName.name);
     const elapsedMs = performance.now() - started;
     setExportReasons(output.photoOnlyFrames);
+    releaseResult(state.result);
     state.result = {
-      files: output.files.map((file) => ({ ...file, selected: true, previewUrl: URL.createObjectURL(new Blob([file.bytes], { type: file.type })) })),
+      files: output.files.map((file) => ({ ...file, selected: true })),
       elapsedMs, returnScreen: state.returnScreen, delivery: "download", shared: 0,
     };
     renderResult();
@@ -1595,12 +1642,16 @@ byId("toggle-all-results").addEventListener("click", () => {
 });
 byId("result-done").addEventListener("click", () => {
   const screen = state.result?.returnScreen ?? "roll";
+  releaseResult(state.result);
+  state.result = null;
+  invalidateShareSession();
   if (screen === "roll") renderRoll(); else renderCut();
   showScreen(screen);
 });
 for (const button of document.querySelectorAll("[data-app-preview]")) button.addEventListener("click", () => openAppPreview(button.dataset.appPreview));
 byId("app-preview-close").addEventListener("click", () => { byId("app-preview-layer").hidden = true; });
 window.addEventListener("pageshow", () => { if (state.screen === "result") updateShareAvailability(); });
+window.addEventListener("pagehide", () => thumbnailCache.clear());
 
 if (new URLSearchParams(location.search).get("demo") === "1") {
   state.photos = ["scan_1.jpg", "scan_2.jpg", "scan_10.jpg"].map((name) => ({ name, bytes: new Uint8Array() }));

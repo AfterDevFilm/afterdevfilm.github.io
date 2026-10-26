@@ -56,17 +56,18 @@ function endOfCentralDirectory(bytes, view) {
   throw new Error("ZIP 항목 표를 찾지 못했어요.");
 }
 
-function centralEntries(bytes, limits) {
+// `bytes` is the whole ZIP, or only its tail that starts at file offset `base`.
+function centralEntries(bytes, limits, base = 0) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const decoder = new TextDecoder("utf-8", { fatal: false });
   const end = endOfCentralDirectory(bytes, view);
   if (end.entries > limits.maxEntryCount) throw tooLarge("entryCount");
-  const centralEnd = end.start + end.size;
-  if (centralEnd > end.offset || centralEnd > bytes.length) throw new Error("ZIP의 항목 표가 잘렸어요.");
+  const centralEnd = end.start + end.size - base;
+  if (end.start < base || centralEnd > end.offset || centralEnd > bytes.length) throw new Error("ZIP의 항목 표가 잘렸어요.");
   const entries = [];
   let totalUncompressedSize = 0;
   let largestEntrySize = 0;
-  let offset = end.start;
+  let offset = end.start - base;
   while (entries.length < end.entries) {
     if (offset + 46 > centralEnd || uint32(view, offset) !== 0x02014b50) {
       throw new Error("ZIP의 항목 표가 잘렸어요.");
@@ -97,10 +98,10 @@ export function isSafeZipPath(name) {
   return !normalized.split("/").some((part) => part === "..");
 }
 
-function inspectZipRecords(bytes, overrides) {
+function inspectZipRecords(bytes, overrides, base = 0, total = bytes.length) {
   const limits = zipLimits(overrides);
-  if (bytes.length > limits.maxZipBytes) throw tooLarge("zipBytes");
-  const inspected = centralEntries(bytes, limits);
+  if (total > limits.maxZipBytes) throw tooLarge("zipBytes");
+  const inspected = centralEntries(bytes, limits, base);
   for (const entry of inspected.entries) {
     if ((entry.flags & 1) !== 0) throw new Error("암호가 걸린 ZIP은 열 수 없어요.");
     if (!isSafeZipPath(entry.name)) throw new Error("폴더 밖을 가리키는 ZIP 경로가 있어요.");
@@ -117,81 +118,181 @@ export function inspectZip(bytes, overrides) {
   };
 }
 
-function joined(chunks, length) {
-  const output = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return output;
-}
-
-function unzipPhotos(bytes, inspected) {
+const photoNameCounts = (inspected) => {
   const expected = new Map();
   for (const entry of inspected.entries) {
     if (!PHOTO_NAME.test(entry.name) || entry.name.endsWith("/")) continue;
     expected.set(entry.name, (expected.get(entry.name) ?? 0) + 1);
   }
+  return expected;
+};
+
+/**
+ * Incremental photo extractor. Each entry is written straight into one buffer sized from the central directory,
+ * so a photo is never held twice (chunk list + joined copy). `push` takes the ZIP in order, in any chunk size.
+ */
+function photoExtractor(inspected) {
+  const expected = photoNameCounts(inspected);
+  const declared = new Map();
+  for (const entry of inspected.entries) {
+    if (!PHOTO_NAME.test(entry.name) || entry.name.endsWith("/")) continue;
+    declared.set(entry.name, [...(declared.get(entry.name) ?? []), entry.size]);
+  }
   const files = [];
   let totalBytes = 0;
-  try {
-    const tool = library();
-    const unzip = new tool.Unzip((file) => {
-      if (!PHOTO_NAME.test(file.name) || file.name.endsWith("/")) return;
-      if (!isSafeZipPath(file.name) || !expected.get(file.name)) throw new Error("ZIP의 항목 표가 맞지 않아요.");
-      expected.set(file.name, expected.get(file.name) - 1);
-      const chunks = [];
-      let entryBytes = 0;
-      file.ondata = (error, chunk, final) => {
-        if (error) throw error;
-        entryBytes += chunk.length;
-        totalBytes += chunk.length;
-        if (entryBytes > inspected.limits.maxSingleEntryUncompressedBytes) {
-          file.terminate();
-          throw tooLarge("singleEntryUncompressedBytes");
-        }
-        if (totalBytes > inspected.limits.maxTotalUncompressedBytes) {
-          file.terminate();
-          throw tooLarge("totalUncompressedBytes");
-        }
-        chunks.push(chunk.slice());
-        if (final) files.push({ name: file.name, bytes: joined(chunks, entryBytes) });
-      };
-      file.start();
-    });
-    unzip.register(tool.UnzipInflate);
-    for (let offset = 0; offset < bytes.length; offset += ZIP_INPUT_CHUNK_BYTES) {
-      const end = Math.min(offset + ZIP_INPUT_CHUNK_BYTES, bytes.length);
-      unzip.push(bytes.subarray(offset, end), end === bytes.length);
-    }
-  } catch (error) {
-    if (error.kind === ZIP_ERROR_KIND_LIMIT) throw error;
-    throw new Error(`ZIP을 풀지 못했어요: ${error.message}`);
-  }
-  if ([...expected.values()].some((count) => count !== 0)) throw new Error("ZIP을 풀지 못했어요: ZIP의 항목 표가 맞지 않아요.");
-  return files;
+  const tool = library();
+  const unzip = new tool.Unzip((file) => {
+    if (!PHOTO_NAME.test(file.name) || file.name.endsWith("/")) return;
+    if (!isSafeZipPath(file.name) || !expected.get(file.name)) throw new Error("ZIP의 항목 표가 맞지 않아요.");
+    expected.set(file.name, expected.get(file.name) - 1);
+    let output = new Uint8Array(declared.get(file.name)?.shift() ?? 0);
+    let entryBytes = 0;
+    file.ondata = (error, chunk, final) => {
+      if (error) throw error;
+      entryBytes += chunk.length;
+      totalBytes += chunk.length;
+      if (entryBytes > inspected.limits.maxSingleEntryUncompressedBytes) {
+        file.terminate();
+        throw tooLarge("singleEntryUncompressedBytes");
+      }
+      if (totalBytes > inspected.limits.maxTotalUncompressedBytes) {
+        file.terminate();
+        throw tooLarge("totalUncompressedBytes");
+      }
+      if (entryBytes > output.length) {
+        const grown = new Uint8Array(Math.max(entryBytes, output.length * 2));
+        grown.set(output.subarray(0, entryBytes - chunk.length));
+        output = grown;
+      }
+      output.set(chunk, entryBytes - chunk.length);
+      if (final) files.push({ name: file.name, bytes: entryBytes === output.length ? output : output.slice(0, entryBytes) });
+    };
+    file.start();
+  });
+  unzip.register(tool.UnzipInflate);
+  return {
+    push(chunk, final) {
+      try {
+        unzip.push(chunk, final);
+      } catch (error) {
+        if (error.kind === ZIP_ERROR_KIND_LIMIT) throw error;
+        throw new Error(`ZIP을 풀지 못했어요: ${error.message}`);
+      }
+    },
+    finish() {
+      if ([...expected.values()].some((count) => count !== 0)) throw new Error("ZIP을 풀지 못했어요: ZIP의 항목 표가 맞지 않아요.");
+      return files;
+    },
+  };
 }
 
-export function readPhotoZip(bytes, overrides) {
-  const inspected = inspectZipRecords(bytes, overrides);
-  const extracted = unzipPhotos(bytes, inspected);
+function photosFrom(extracted) {
   const byName = new Map(extracted.map((file) => [file.name, file.bytes]));
   const names = naturalSort(extracted.map((file) => file.name));
   if (!names.length) throw new Error("ZIP에서 JPEG 또는 PNG 사진을 찾지 못했어요.");
   return names.map((name) => ({ name, bytes: byName.get(name), ...inspectPhoto(name, byName.get(name)) }));
 }
 
-export function makeZip(files) {
-  for (const file of files) {
-    const name = String(file.name);
-    const hasControl = [...name].some((character) => {
-      const point = character.codePointAt(0);
-      return (point >= 0x0000 && point <= 0x001f) || (point >= 0x007f && point <= 0x009f);
-    });
-    if (!name || name.includes("/") || name.includes("\\") || name.includes("..") || hasControl) {
-      throw new Error("내보낼 파일 이름을 만들지 못했어요.");
+export function readPhotoZip(bytes, overrides) {
+  const inspected = inspectZipRecords(bytes, overrides);
+  const extractor = photoExtractor(inspected);
+  for (let offset = 0; offset < bytes.length; offset += ZIP_INPUT_CHUNK_BYTES) {
+    const end = Math.min(offset + ZIP_INPUT_CHUNK_BYTES, bytes.length);
+    extractor.push(bytes.subarray(offset, end), end === bytes.length);
+  }
+  return photosFrom(extractor.finish());
+}
+
+async function blobBytes(blob, start, end) {
+  return new Uint8Array(await blob.slice(start, end).arrayBuffer());
+}
+
+/** Same result as `readPhotoZip`, but reads a File/Blob piece by piece, so the whole ZIP is never in memory at once. */
+export async function readPhotoZipBlob(blob, overrides) {
+  const total = blob.size;
+  let base = Math.max(0, total - 22 - 0xffff);
+  let tail = await blobBytes(blob, base, total);
+  // The central directory sits at the end; take the whole of it (not only the last 64 KiB) when it is longer.
+  const limits = zipLimits(overrides);
+  if (total <= limits.maxZipBytes && tail.length >= 22) {
+    try {
+      const end = endOfCentralDirectory(tail, new DataView(tail.buffer, tail.byteOffset, tail.byteLength));
+      if (end.entries <= limits.maxEntryCount && end.start < base && end.start + end.size <= total) {
+        base = end.start;
+        tail = await blobBytes(blob, base, total);
+      }
+    } catch {
+      // The inspection below reports the real problem with the original message.
     }
   }
+  const inspected = inspectZipRecords(tail, overrides, base, total);
+  tail = null;
+  const extractor = photoExtractor(inspected);
+  for (let offset = 0; offset < total; offset += ZIP_INPUT_CHUNK_BYTES * 16) {
+    const end = Math.min(offset + ZIP_INPUT_CHUNK_BYTES * 16, total);
+    extractor.push(await blobBytes(blob, offset, end), end === total);
+  }
+  return photosFrom(extractor.finish());
+}
+
+function assertExportName(file) {
+  const name = String(file.name);
+  const hasControl = [...name].some((character) => {
+    const point = character.codePointAt(0);
+    return (point >= 0x0000 && point <= 0x001f) || (point >= 0x007f && point <= 0x009f);
+  });
+  if (!name || name.includes("/") || name.includes("\\") || name.includes("..") || hasControl) {
+    throw new Error("내보낼 파일 이름을 만들지 못했어요.");
+  }
+}
+
+export function makeZip(files) {
+  for (const file of files) assertExportName(file);
   return library().zipSync(Object.fromEntries(files.map((file) => [file.name, file.bytes])), { level: 6 });
+}
+
+const ZIP_PART_FLUSH_BYTES = 8 * MIB;
+
+/**
+ * Streaming ZIP writer: each file is compressed as it is added and then no longer needed, so the result is built
+ * without holding every file next to a second copy. Output pieces are folded into Blob parts every few MiB.
+ */
+export function createZipWriter({ level = 6 } = {}) {
+  const tool = library();
+  const parts = [];
+  let pending = [];
+  let pendingBytes = 0;
+  let failure = null;
+  let finished = false;
+  const names = new Set();
+  const flush = () => {
+    if (!pending.length) return;
+    parts.push(new Blob(pending));
+    pending = [];
+    pendingBytes = 0;
+  };
+  const zip = new tool.Zip((error, chunk, final) => {
+    if (error) { failure = error; return; }
+    pending.push(chunk);
+    pendingBytes += chunk.length;
+    if (pendingBytes >= ZIP_PART_FLUSH_BYTES) flush();
+    if (final) { flush(); finished = true; }
+  });
+  return {
+    add(name, bytes) {
+      assertExportName({ name });
+      if (names.has(name)) throw new Error("내보낼 파일 이름을 만들지 못했어요.");
+      names.add(name);
+      const entry = new tool.ZipDeflate(name, { level });
+      zip.add(entry);
+      entry.push(bytes, true);
+      if (failure) throw failure;
+    },
+    finish() {
+      zip.end();
+      if (failure) throw failure;
+      if (!finished) throw new Error("ZIP 파일을 만들지 못했어요.");
+      return new Blob(parts, { type: "application/zip" });
+    },
+  };
 }

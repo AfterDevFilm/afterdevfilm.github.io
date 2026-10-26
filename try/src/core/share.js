@@ -18,7 +18,7 @@ export function makeJpegShareFiles(files, FileClass = globalThis.File) {
   if (!FileClass) throw new Error("이 브라우저에서는 사진 파일을 공유할 수 없어요.");
   return files.map((file) => {
     if (!/\.jpe?g$/i.test(file.name)) throw new Error("JPEG 사진만 사진첩으로 넘길 수 있어요. ZIP으로 저장해 주세요.");
-    return new FileClass([file.bytes], file.name, { type: "image/jpeg" });
+    return new FileClass([file.blob ?? file.bytes], file.name, { type: "image/jpeg" });
   });
 }
 
@@ -26,7 +26,7 @@ export function makeShareFiles(files, FileClass = globalThis.File) {
   if (!FileClass) throw new Error("이 브라우저에서는 사진 파일을 공유할 수 없어요.");
   return files.map((file) => {
     const type = file.type ?? (/\.webp$/i.test(file.name) ? "image/webp" : /\.png$/i.test(file.name) ? "image/png" : "image/jpeg");
-    return new FileClass([file.bytes], file.name, { type });
+    return new FileClass([file.blob ?? file.bytes], file.name, { type });
   });
 }
 

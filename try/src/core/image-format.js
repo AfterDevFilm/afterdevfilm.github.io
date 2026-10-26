@@ -40,3 +40,19 @@ export function inspectPhoto(name, bytes) {
   if (!result) throw new Error(`${name}의 사진 크기를 읽지 못했어요.`);
   return result;
 }
+
+/**
+ * Width and height as the picture is shown: a JPEG whose EXIF orientation turns it by a quarter (5 to 8) has the
+ * two swapped. `source` is the JPEG bytes or a Blob. If the orientation cannot be read, the stored size is returned.
+ */
+export async function shownPhotoDimensions(source, width, height, format = "jpeg") {
+  if (format === "jpeg" && globalThis.exifr?.orientation) {
+    try {
+      const orientation = await globalThis.exifr.orientation(source);
+      if (orientation >= 5 && orientation <= 8) return { width: height, height: width };
+    } catch {
+      // No readable EXIF: keep the stored size.
+    }
+  }
+  return { width, height };
+}
