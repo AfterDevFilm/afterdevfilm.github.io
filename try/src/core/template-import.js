@@ -1,5 +1,24 @@
 import { compactNumbers } from "./export-rules.js";
 
+export const TEMPLATE_CONFIRMATION_KIND = Object.freeze({
+  ambiguousValue: "AMBIGUOUS_VALUE",
+  ambiguousNumber: "AMBIGUOUS_NUMBER",
+  duplicateNumber: "DUPLICATE_NUMBER",
+});
+
+export function templateConfirmationNoticeLines(kinds) {
+  const present = new Set(kinds ?? []);
+  const lines = [];
+  if (present.has(TEMPLATE_CONFIRMATION_KIND.ambiguousValue)) {
+    lines.push("확인이 필요한 값이 있어요.");
+  }
+  if (present.has(TEMPLATE_CONFIRMATION_KIND.ambiguousNumber)
+    || present.has(TEMPLATE_CONFIRMATION_KIND.duplicateNumber)) {
+    lines.push("번호가 맞지 않는 줄이 있어요. 확인해 주세요.");
+  }
+  return lines;
+}
+
 export const TEMPLATE_ROLL_FIELDS = [
   ["name", "롤 이름"],
   ["camera", "카메라"],

@@ -1,4 +1,5 @@
 import { cleanExposureRational } from "./value-rules.js";
+import { TEMPLATE_CONFIRMATION_KIND } from "./template-import.js";
 
 export const headerAliases = [
   ["롤 이름", "rollIdentifier"], ["roll", "rollIdentifier"],
@@ -87,6 +88,30 @@ function isSeparator(line) {
   return tableCells(line).every((cell) => /^:?-{3,}:?$/.test(cell));
 }
 
+function visibleMarkdownLines(text) {
+  const rawLines = String(text).replace(/\r\n/g, "\n").split("\n");
+  let commentOpen = false;
+  return rawLines.map((rawLine) => {
+    let visible = "";
+    let cursor = 0;
+    while (cursor < rawLine.length) {
+      if (commentOpen) {
+        const close = rawLine.indexOf("-->", cursor);
+        if (close < 0) return visible;
+        cursor = close + 3;
+        commentOpen = false;
+      } else {
+        const open = rawLine.indexOf("<!--", cursor);
+        if (open < 0) return visible + rawLine.slice(cursor);
+        visible += rawLine.slice(cursor, open);
+        cursor = open + 4;
+        commentOpen = true;
+      }
+    }
+    return visible;
+  });
+}
+
 function normalizeAperture(raw) {
   const value = stripMarkup(raw);
   if (!value || value === "미확정") return null;
@@ -103,6 +128,40 @@ function cleanFocal(raw) {
   const value = stripMarkup(raw);
   const rational = cleanExposureRational("focalLength", value);
   return rational ? String(Number(value.replace(/mm$/i, ""))) : null;
+}
+
+function addConfirmation(confirmations, lineNumber, kind, field, rawValue) {
+  confirmations.push({ lineNumber, kind, field, rawValue });
+}
+
+function cleanExposureCompensation(raw) {
+  const value = stripMarkup(raw);
+  return /^[+-]\d+(?:\.\d+)?$/.test(value) ? value : null;
+}
+
+function cleanShootingDate(raw) {
+  const value = stripMarkup(raw);
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? value : null;
+}
+
+function appendDuplicateNumberConfirmations(rows, confirmations) {
+  const byNumber = new Map();
+  for (const row of rows) {
+    if (!byNumber.has(row.cut.n)) byNumber.set(row.cut.n, []);
+    byNumber.get(row.cut.n).push(row);
+  }
+  for (const group of byNumber.values()) {
+    if (group.length < 2) continue;
+    for (const row of group) {
+      addConfirmation(confirmations, row.lineNumber, TEMPLATE_CONFIRMATION_KIND.duplicateNumber, "number", row.numberRaw);
+    }
+  }
 }
 
 function addDistinct(target, key, value) {
@@ -144,10 +203,16 @@ function validCutName(value, frame) {
 }
 
 function parseCutRow(headers, cells, lineNumber, options = {}) {
+  const confirmations = options.confirmations ?? [];
   const numberIndex = headers.findIndex((header) => templateHeaderKey(header) === "number");
   const numberText = cells[numberIndex] ?? "";
   const match = numberText.match(/^#?0*([1-9]\d*)$/);
-  if (numberIndex >= 0 && !match) return { unread: true };
+  if (numberIndex >= 0 && !match) {
+    if (options.includeAmbiguousNumberConfirmation !== false) {
+      addConfirmation(confirmations, lineNumber, TEMPLATE_CONFIRMATION_KIND.ambiguousNumber, "number", numberText);
+    }
+    return { unread: true };
+  }
   const cut = { n: match ? Number(match[1]) : null };
   const values = new Map();
   let subject = "";
@@ -161,19 +226,42 @@ function parseCutRow(headers, cells, lineNumber, options = {}) {
     if (key === "aperture" && normalizeTemplateHeader(header) === "조리개") {
       const aperture = normalizeAperture(value);
       addDistinct(values, "ap", aperture);
+      if (value && value !== "미확정" && !aperture) {
+        addConfirmation(confirmations, lineNumber, TEMPLATE_CONFIRMATION_KIND.ambiguousValue, "aperture", value);
+      }
       if (/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value) && aperture) rawBareAperture = value;
     } else if (key === "aperture") {
-      addDistinct(values, "ap", normalizeAperture(value));
+      const aperture = normalizeAperture(value);
+      addDistinct(values, "ap", aperture);
+      if (value && value !== "미확정" && !aperture) {
+        addConfirmation(confirmations, lineNumber, TEMPLATE_CONFIRMATION_KIND.ambiguousValue, "aperture", value);
+      }
     } else if (key === "shutter") {
-      addDistinct(values, "sh", cleanShutter(value));
+      const shutter = cleanShutter(value);
+      addDistinct(values, "sh", shutter);
+      if (value && value !== "미확정" && !shutter) {
+        addConfirmation(confirmations, lineNumber, TEMPLATE_CONFIRMATION_KIND.ambiguousValue, "shutter", value);
+      }
     } else if (key === "exposureCompensation") {
-      if (value && value !== "미확정") addDistinct(values, "ev", value);
+      const exposureCompensation = cleanExposureCompensation(value);
+      addDistinct(values, "ev", exposureCompensation);
+      if (value && value !== "미확정" && !exposureCompensation) {
+        addConfirmation(confirmations, lineNumber, TEMPLATE_CONFIRMATION_KIND.ambiguousValue, "exposureCompensation", value);
+      }
     } else if (key === "shootingDate") {
-      if (value) addDistinct(values, "date", value);
+      const shootingDate = cleanShootingDate(value);
+      addDistinct(values, "date", shootingDate);
+      if (value && value !== "미확정" && !shootingDate) {
+        addConfirmation(confirmations, lineNumber, TEMPLATE_CONFIRMATION_KIND.ambiguousValue, "shootingDate", value);
+      }
     } else if (key === "note") {
       if (value) addDistinct(values, "note", value);
     } else if (key === "focalLength") {
-      addDistinct(values, "focal", cleanFocal(value));
+      const focal = cleanFocal(value);
+      addDistinct(values, "focal", focal);
+      if (value && value !== "미확정" && !focal) {
+        addConfirmation(confirmations, lineNumber, TEMPLATE_CONFIRMATION_KIND.ambiguousValue, "focalLength", value);
+      }
     } else if (key === "lens") {
       if (value) addDistinct(values, "lens", value);
     } else if (key === "settings") {
@@ -202,7 +290,7 @@ function parseCutRow(headers, cells, lineNumber, options = {}) {
   }
   if (cut.note === "정" && cut.ap) cut.line = `${cut.n}번  조리개 ${cut.ap} · 메모 ${cut.note}`;
   else if (cut.cutNameRejected && cut.n === 1) cut.line = `${cut.n}번  메모 ${cut.note}`;
-  return { cut, lineNumber };
+  return { cut, lineNumber, numberRaw: numberText };
 }
 
 function parsePlainCut(line) {
@@ -221,13 +309,15 @@ function parsePlainCut(line) {
 }
 
 export function parseMarkdownRecord(text, options = {}) {
-  const lines = String(text).replace(/\r\n/g, "\n").split("\n");
+  const lines = visibleMarkdownLines(text);
   if (lines.at(-1) === "") lines.pop();
   const candidates = new Map();
   const blockedFields = new Set();
   const unread = new Set();
   const unreadRaw = [];
   const cuts = [];
+  const cutRows = [];
+  const confirmations = [];
   const consumed = new Set();
   const unknownColumns = [];
 
@@ -312,16 +402,22 @@ export function parseMarkdownRecord(text, options = {}) {
           cutHeaders.forEach((header) => { if (!templateHeaderKey(header)) addUnknown(unknownColumns, header); });
           for (const row of rows.slice(nestedHeader + 1)) {
             if (row.cells.every((cell) => /^:?-{3,}:?$/.test(cell))) continue;
-            const parsed = parseCutRow(cutHeaders, row.cells, row.line);
+            const parsed = parseCutRow(cutHeaders, row.cells, row.line, {
+              confirmations, includeAmbiguousNumberConfirmation: false,
+            });
             if (parsed.unread) unread.add(row.line); else cuts.push(parsed.cut);
+            if (!parsed.unread) cutRows.push(parsed);
           }
         }
       } else if (numberHeader) {
         headers.forEach((header) => { if (!templateHeaderKey(header)) addUnknown(unknownColumns, header); });
         for (const row of rows) {
-          const parsed = parseCutRow(headers, row.cells, row.line);
+          const parsed = parseCutRow(headers, row.cells, row.line, {
+            confirmations, includeAmbiguousNumberConfirmation: false,
+          });
           if (parsed.unread) unread.add(row.line);
           else cuts.push(parsed.cut);
+          if (!parsed.unread) cutRows.push(parsed);
         }
       } else {
         for (let row = start; row < index; row += 1) unread.add(row + 1);
@@ -341,7 +437,10 @@ export function parseMarkdownRecord(text, options = {}) {
       continue;
     }
     const cut = parsePlainCut(lines[index]);
-    if (cut) cuts.push(cut);
+    if (cut) {
+      cuts.push(cut);
+      cutRows.push({ cut, lineNumber, numberRaw: String(cut.n) });
+    }
     index += 1;
   }
 
@@ -355,7 +454,8 @@ export function parseMarkdownRecord(text, options = {}) {
     if (values.length === 1) roll[field] = values[0];
     else entries.forEach((entry) => unread.add(entry.line));
   }
-  const result = { roll, cuts, unread: [...unread].sort((a, b) => a - b), unknownColumns };
+  appendDuplicateNumberConfirmations(cutRows, confirmations);
+  const result = { roll, cuts, unread: [...unread].sort((a, b) => a - b), confirmations, unknownColumns };
   if (unreadRaw.length) result.unreadRaw = unreadRaw;
   return result;
 }
@@ -376,6 +476,8 @@ export function parseCsvRecord(text, papa = globalThis.Papa) {
   const unread = [];
   const unreadRaw = [];
   const unknownColumns = [];
+  const confirmations = [];
+  const cutRows = [];
   const rollEnd = headerIndex < 0 ? rows.length : headerIndex;
   for (let index = 0; index < rollEnd; index += 1) {
     const row = rows[index];
@@ -396,14 +498,18 @@ export function parseCsvRecord(text, papa = globalThis.Papa) {
     for (let index = headerIndex + 1; index < rows.length; index += 1) {
       const row = rows[index];
       if (row.every((cell) => !cell.trim())) continue;
-      const result = parseCutRow(headers, row, index + 1, { includeApertureExif: false });
+      const result = parseCutRow(headers, row, index + 1, { includeApertureExif: false, confirmations });
       if (result.unread) {
         unread.push(index + 1);
         unreadRaw.push(row.join(","));
-      } else cuts.push(result.cut);
+      } else {
+        cuts.push(result.cut);
+        cutRows.push(result);
+      }
     }
   }
-  const result = { roll, cuts, unread, unknownColumns };
+  appendDuplicateNumberConfirmations(cutRows, confirmations);
+  const result = { roll, cuts, unread, confirmations, unknownColumns };
   if (unreadRaw.length) result.unreadRaw = unreadRaw;
   return result;
 }

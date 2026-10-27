@@ -15,7 +15,7 @@ import {
 } from "./core/multi-edit.js";
 import { contactSheetBlob, evaluateContactSheetLimit, renderContactSheet } from "./core/contact-sheet.js";
 import {
-  TEMPLATE_ROLL_FIELDS, cutNameRejectedLine, rollMissingNumberLine, templateCutLine,
+  TEMPLATE_ROLL_FIELDS, cutNameRejectedLine, rollMissingNumberLine, templateConfirmationNoticeLines, templateCutLine,
 } from "./core/template-import.js";
 import {
   ThumbnailBitmapCache, makeThumbnailBitmap, renderCachedThumbnail,
@@ -54,7 +54,7 @@ const state = {
   cutOrder: [], frameByCut: {}, bulkEditing: false, bulkSelection: new Set(), bulkDraft: {}, bulkAfterAction: false, bulkMessage: "",
   contactFormat: "jpeg", contactQuality: "high", contactHeader: true, contactRender: null, contactFile: null,
   importedRollKeys: new Set(), pendingRecord: null, templateGuideSeen: false, bulkNoticeTimer: null,
-  recordFileName: "", exampleActive: false,
+  recordFileName: "", exampleActive: false, exampleRecordBytes: null,
   appPreviewAvailable: { album: false, webp: true, large: true, contact: true, "zip-backup": true },
 };
 const thumbnailCache = new ThumbnailBitmapCache();
@@ -455,6 +455,7 @@ function renderRollInfo() {
   const unmatchedLine = unmatched.length ? `맞는 컷이 없는 기록: ${compactNumbers(unmatched)}번` : "";
   byId("record-unmatched").textContent = unmatchedLine;
   byId("record-unmatched").hidden = !unmatchedLine;
+  byId("example-record-import").hidden = !state.exampleActive;
 }
 
 function openRollInfo(returnScreen = state.screen) {
@@ -840,7 +841,7 @@ async function renderPreview() {
       source = canvas;
     } else {
       const rendered = await renderInformationFrame(item, item.record, state.mode, item.frame, 0.9, state.rollFrameLabel, state.rgbHistogram);
-      source = applyPaddingRatioCanvas(rendered.canvas, state.paddingRatio);
+      source = applyPaddingRatioCanvas(rendered.canvas, state.paddingRatio, rendered.geometry.photoY, rendered.geometry.photoHeight);
     }
     if (token !== state.previewToken) return;
     previewCanvas.width = source.width;
@@ -1122,6 +1123,7 @@ async function receiveZip(file, { askRollInfo = true } = {}) {
     thumbnailCache.clear();
     state.photos = photos;
     state.exampleActive = false;
+    state.exampleRecordBytes = null;
     state.cutOrder = [];
     state.frameByCut = {};
     state.cutValues = [];
@@ -1168,10 +1170,10 @@ async function startHanriverExample() {
     const opened = await receiveZip(new File([zipBytes], "hanriver-roll.zip", { type: "application/zip" }), { askRollInfo: false });
     if (!opened) return;
     state.exampleActive = true;
+    state.exampleRecordBytes = recordBytes;
     state.frameByCut = Object.fromEntries(state.photos.map((photo) => [photo.name, numberFromExampleName(photo.name)]));
     refreshItems();
     renderRoll();
-    await receiveRecord(new File([recordBytes], "hanriver_shooting_record.csv", { type: "text/csv" }));
   } catch (error) {
     showScreen("start");
     setStatus(error.message, true, startStatus);
@@ -1215,7 +1217,7 @@ function renderRecordConfirmation() {
     rejected,
     unknownColumnsLine(parsed.unknownColumns),
     parsed.unread.length ? "읽지 못한 줄은 메모에 남겼어요." : null,
-    parsed.confirmations?.length ? "번호가 맞지 않는 줄이 있어요. 확인해 주세요." : null,
+    ...templateConfirmationNoticeLines(parsed.confirmations?.map((confirmation) => confirmation.kind)),
     missing,
   ].filter(Boolean);
   for (const text of notices) {
@@ -1390,6 +1392,11 @@ zipInput.addEventListener("change", () => zipInput.files[0] && receiveZip(zipInp
 recordInput.addEventListener("change", () => recordInput.files[0] && receiveRecord(recordInput.files[0]));
 byId("shifted-demo").addEventListener("click", startHanriverExample);
 byId("record-import").addEventListener("click", () => recordInput.click());
+byId("example-record-import").addEventListener("click", () => {
+  if (state.exampleActive && state.exampleRecordBytes) {
+    receiveRecord(new File([state.exampleRecordBytes], "hanriver_shooting_record.csv", { type: "text/csv" }));
+  }
+});
 byId("record-examples").addEventListener("click", openExampleSheet);
 byId("record-guide-info").addEventListener("click", showTemplateGuide);
 byId("record-cancel").addEventListener("click", () => { state.pendingRecord = null; renderRollInfo(); showScreen("roll-info"); });

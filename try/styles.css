@@ -868,6 +868,7 @@ h2 {
   background: var(--outline);
 }
 .example-sheet h2 { margin-bottom: 8px; }
+.example-sheet-note { margin: 0 4px 4px; color: var(--ink-muted); font-size: 14px; line-height: 20px; }
 .example-sheet a {
   display: grid;
   min-height: 64px;

@@ -3,39 +3,49 @@ import { writePhotoMetadata } from "../adapters/exif.js";
 import { makeExportFilename } from "./export-rules.js";
 import { evaluateInformationFrameLimit, renderInformationFrame } from "./information-frame.js";
 
-export function computePaddingRatioLayout(blockWidth, blockHeight, ratio) {
+export function effectivePaddingRatio(blockWidth, blockHeight, ratio) {
+  return blockWidth > blockHeight && (ratio === "4:5" || ratio === "3:4") ? "original" : ratio;
+}
+
+export function computePaddingRatioLayout(blockWidth, blockHeight, ratio, photoY = null, photoHeight = null) {
   if (!Number.isInteger(blockWidth) || !Number.isInteger(blockHeight) || blockWidth <= 0 || blockHeight <= 0) throw new Error("사진 크기는 양의 정수여야 해요.");
+  const appliedRatio = effectivePaddingRatio(blockWidth, blockHeight, ratio);
   let canvasWidth = blockWidth;
   let canvasHeight = blockHeight;
-  if (ratio === "4:5" && 4 * blockHeight > 5 * blockWidth) {
+  if (appliedRatio === "4:5" && 4 * blockHeight > 5 * blockWidth) {
     const s = Math.floor((4 * blockHeight - 5 * blockWidth) / 8 + 0.5);
     canvasWidth = 4 * Math.ceil((blockWidth + 2 * s) / 4);
     canvasHeight = 5 * canvasWidth / 4;
-  } else if (ratio === "3:4" && 3 * blockHeight > 4 * blockWidth) {
+  } else if (appliedRatio === "3:4" && 3 * blockHeight > 4 * blockWidth) {
     const s = Math.floor(2 * (3 * blockHeight - 4 * blockWidth) / 13 + 0.5);
     canvasWidth = 3 * Math.ceil((blockWidth + 2 * s) / 3);
     canvasHeight = 4 * canvasWidth / 3;
-  } else if (ratio === "1:1" && blockHeight > blockWidth) {
+  } else if (appliedRatio === "1:1" && blockHeight > blockWidth) {
     const s = Math.floor(2 * (blockHeight - blockWidth) / 3 + 0.5);
     canvasWidth = blockWidth + 2 * s;
     canvasHeight = canvasWidth;
-  } else if (ratio === "4:5") {
+  } else if (appliedRatio === "4:5") {
     const unit = Math.max(Math.ceil(blockWidth / 4), Math.ceil(blockHeight / 5));
     canvasWidth = 4 * unit;
     canvasHeight = 5 * unit;
-  } else if (ratio === "3:4") {
+  } else if (appliedRatio === "3:4") {
     const unit = Math.max(Math.ceil(blockWidth / 3), Math.ceil(blockHeight / 4));
     canvasWidth = 3 * unit;
     canvasHeight = 4 * unit;
-  } else if (ratio === "1:1") {
+  } else if (appliedRatio === "1:1") {
     canvasWidth = canvasHeight = Math.max(blockWidth, blockHeight);
-  } else if (ratio !== "original") throw new Error("내보낼 비율을 고르지 못했어요.");
-  return { canvasWidth, canvasHeight, x: Math.floor((canvasWidth - blockWidth) / 2), y: Math.floor((canvasHeight - blockHeight) / 2) };
+  } else if (appliedRatio !== "original") throw new Error("내보낼 비율을 고르지 못했어요.");
+  let y = Math.floor((canvasHeight - blockHeight) / 2);
+  if (appliedRatio === "1:1" && photoY !== null && photoHeight !== null) {
+    if (!Number.isInteger(photoY) || !Number.isInteger(photoHeight) || photoY < 0 || photoHeight <= 0 || photoY + photoHeight > blockHeight) throw new Error("사진 범위가 블록 안에 있어야 해요.");
+    y = Math.min(Math.max(Math.floor((canvasHeight - photoHeight) / 2) - photoY, 0), canvasHeight - blockHeight);
+  }
+  return { canvasWidth, canvasHeight, x: Math.floor((canvasWidth - blockWidth) / 2), y };
 }
 
-export function applyPaddingRatioCanvas(block, ratio) {
-  if (ratio === "original") return block;
-  const layout = computePaddingRatioLayout(block.width, block.height, ratio);
+export function applyPaddingRatioCanvas(block, ratio, photoY = null, photoHeight = null) {
+  if (effectivePaddingRatio(block.width, block.height, ratio) === "original") return block;
+  const layout = computePaddingRatioLayout(block.width, block.height, ratio, photoY, photoHeight);
   const canvas = document.createElement("canvas");
   canvas.width = layout.canvasWidth;
   canvas.height = layout.canvasHeight;
@@ -46,9 +56,10 @@ export function applyPaddingRatioCanvas(block, ratio) {
   return canvas;
 }
 
-export function applyPaddingRatioFilename(name, ratio) {
-  if (ratio === "original") return name;
-  const suffix = { "4:5": "_4x5", "3:4": "_3x4", "1:1": "_1x1" }[ratio];
+export function applyPaddingRatioFilename(name, ratio, blockWidth = null, blockHeight = null) {
+  const appliedRatio = blockWidth !== null && blockHeight !== null ? effectivePaddingRatio(blockWidth, blockHeight, ratio) : ratio;
+  if (appliedRatio === "original") return name;
+  const suffix = { "4:5": "_4x5", "3:4": "_3x4", "1:1": "_1x1" }[appliedRatio];
   if (!suffix) throw new Error("내보낼 비율을 고르지 못했어요.");
   const dot = name.lastIndexOf(".");
   return dot > 0 ? `${name.slice(0, dot)}${suffix}${name.slice(dot)}` : `${name}${suffix}`;
@@ -184,14 +195,15 @@ export async function exportConfiguredZip(items, {
     } else {
       const made = [];
       try {
-        let canvas = actualMode === "off"
-          ? await photoCanvas(item)
-          : (await renderInformationFrame(item, metadata, actualMode, item.frame, quality, rollFrameLabel, rgbHistogram)).canvas;
+        const rendered = actualMode === "off" ? null : await renderInformationFrame(item, metadata, actualMode, item.frame, quality, rollFrameLabel, rgbHistogram);
+        let canvas = actualMode === "off" ? await photoCanvas(item) : rendered.canvas;
         made.push(canvas);
         if (actualMode !== "off") {
-          canvas = applyPaddingRatioCanvas(canvas, paddingRatio);
+          const blockWidth = canvas.width;
+          const blockHeight = canvas.height;
+          canvas = applyPaddingRatioCanvas(canvas, paddingRatio, rendered.geometry.photoY, rendered.geometry.photoHeight);
           if (!made.includes(canvas)) made.push(canvas);
-          outputName = applyPaddingRatioFilename(outputName, paddingRatio);
+          outputName = applyPaddingRatioFilename(outputName, paddingRatio, blockWidth, blockHeight);
         }
         shown = { width: canvas.width, height: canvas.height };
         bytes = await canvasBytes(canvas, type, quality);
