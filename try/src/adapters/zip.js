@@ -1,10 +1,12 @@
 import { naturalSort } from "../core/natural-sort.js";
 import { inspectPhoto } from "../core/image-format.js";
+import { judgeJpegCompleteness } from "../core/jpeg-completeness.js";
 
 const MIB = 1024 * 1024;
 const ZIP_INPUT_CHUNK_BYTES = 64 * 1024;
 const LIMIT_MESSAGE = "파일이 너무 커서 가져오지 않았어요.";
 const PHOTO_NAME = /\.(?:jpe?g|png)$/i;
+const FILE_CONTENT_MESSAGE = "파일을 읽지 못했어요.";
 
 export const ZIP_ERROR_KIND_LIMIT = "limit";
 
@@ -18,6 +20,11 @@ export const WEB_ZIP_LIMITS = Object.freeze({
 function library() {
   if (!globalThis.fflate) throw new Error("ZIP 도구를 불러오지 못했어요.");
   return globalThis.fflate;
+}
+
+function crcLibrary() {
+  if (!globalThis.CRC32?.buf) throw new Error("CRC32 도구를 불러오지 못했어요.");
+  return globalThis.CRC32;
 }
 
 function uint16(view, offset) {
@@ -37,6 +44,10 @@ function tooLarge(limit) {
   error.kind = ZIP_ERROR_KIND_LIMIT;
   error.limit = limit;
   return error;
+}
+
+function isZipSafetyLimit(error) {
+  return error?.kind === ZIP_ERROR_KIND_LIMIT;
 }
 
 function endOfCentralDirectory(bytes, view) {
@@ -73,6 +84,8 @@ function centralEntries(bytes, limits, base = 0) {
       throw new Error("ZIP의 항목 표가 잘렸어요.");
     }
     const flags = uint16(view, offset + 8);
+    const compression = uint16(view, offset + 10);
+    const crc32 = uint32(view, offset + 16);
     const compressedSize = uint32(view, offset + 20);
     const size = uint32(view, offset + 24);
     const nameLength = uint16(view, offset + 28);
@@ -81,7 +94,7 @@ function centralEntries(bytes, limits, base = 0) {
     const entryEnd = offset + 46 + nameLength + extraLength + commentLength;
     if (entryEnd > centralEnd) throw new Error("ZIP의 항목 표가 잘렸어요.");
     const name = decoder.decode(bytes.subarray(offset + 46, offset + 46 + nameLength));
-    entries.push({ name, flags, compressedSize, size });
+    entries.push({ name, flags, compression, crc32, compressedSize, size });
     totalUncompressedSize += size;
     largestEntrySize = Math.max(largestEntrySize, size);
     if (size > limits.maxSingleEntryUncompressedBytes) throw tooLarge("singleEntryUncompressedBytes");
@@ -118,39 +131,60 @@ export function inspectZip(bytes, overrides) {
   };
 }
 
-const photoNameCounts = (inspected) => {
-  const expected = new Map();
-  for (const entry of inspected.entries) {
-    if (!PHOTO_NAME.test(entry.name) || entry.name.endsWith("/")) continue;
-    expected.set(entry.name, (expected.get(entry.name) ?? 0) + 1);
-  }
-  return expected;
-};
+function isImportCandidateName(name) {
+  const normalized = String(name).replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  const basename = parts.at(-1) ?? "";
+  return !normalized.endsWith("/") && basename && !basename.startsWith(".") && !parts.includes("__MACOSX");
+}
+
+function fileContentFailure(name, kind = "fileContentError") {
+  return { name, kind, message: FILE_CONTENT_MESSAGE, action: "pickAnother" };
+}
 
 /**
  * Incremental photo extractor. Each entry is written straight into one buffer sized from the central directory,
  * so a photo is never held twice (chunk list + joined copy). `push` takes the ZIP in order, in any chunk size.
  */
 function photoExtractor(inspected) {
-  const expected = photoNameCounts(inspected);
   const declared = new Map();
+  const failures = [];
   for (const entry of inspected.entries) {
-    if (!PHOTO_NAME.test(entry.name) || entry.name.endsWith("/")) continue;
-    declared.set(entry.name, [...(declared.get(entry.name) ?? []), entry.size]);
+    if (!isImportCandidateName(entry.name)) continue;
+    const supportedCompression = entry.compression === 0 || entry.compression === 8;
+    if (!PHOTO_NAME.test(entry.name) && !supportedCompression) continue;
+    if (!supportedCompression) {
+      failures.push(fileContentFailure(entry.name));
+      continue;
+    }
+    declared.set(entry.name, [...(declared.get(entry.name) ?? []), entry]);
   }
   const files = [];
   let totalBytes = 0;
   const tool = library();
+  const crcTool = crcLibrary();
   const unzip = new tool.Unzip((file) => {
-    if (!PHOTO_NAME.test(file.name) || file.name.endsWith("/")) return;
-    if (!isSafeZipPath(file.name) || !expected.get(file.name)) throw new Error("ZIP의 항목 표가 맞지 않아요.");
-    expected.set(file.name, expected.get(file.name) - 1);
-    let output = new Uint8Array(declared.get(file.name)?.shift() ?? 0);
+    const entries = declared.get(file.name);
+    if (!entries?.length) return;
+    if (!isSafeZipPath(file.name)) throw new Error("ZIP의 항목 표가 맞지 않아요.");
+    const entry = entries.shift();
+    const keepPhoto = PHOTO_NAME.test(file.name);
+    let output = keepPhoto ? new Uint8Array(entry.size) : null;
     let entryBytes = 0;
+    let crc32 = 0;
+    let failed = false;
     file.ondata = (error, chunk, final) => {
-      if (error) throw error;
+      if (error) {
+        if (isZipSafetyLimit(error)) throw error;
+        if (!failed) failures.push(fileContentFailure(file.name));
+        failed = true;
+        output = null;
+        return;
+      }
+      if (failed) return;
       entryBytes += chunk.length;
       totalBytes += chunk.length;
+      crc32 = crcTool.buf(chunk, crc32);
       if (entryBytes > inspected.limits.maxSingleEntryUncompressedBytes) {
         file.terminate();
         throw tooLarge("singleEntryUncompressedBytes");
@@ -159,13 +193,17 @@ function photoExtractor(inspected) {
         file.terminate();
         throw tooLarge("totalUncompressedBytes");
       }
-      if (entryBytes > output.length) {
+      if (output && entryBytes > output.length) {
         const grown = new Uint8Array(Math.max(entryBytes, output.length * 2));
         grown.set(output.subarray(0, entryBytes - chunk.length));
         output = grown;
       }
-      output.set(chunk, entryBytes - chunk.length);
-      if (final) files.push({ name: file.name, bytes: entryBytes === output.length ? output : output.slice(0, entryBytes) });
+      output?.set(chunk, entryBytes - chunk.length);
+      if (final && (crc32 >>> 0) !== entry.crc32) {
+        failures.push(fileContentFailure(file.name, "checksumMismatch"));
+      } else if (final && output) {
+        files.push({ name: file.name, bytes: entryBytes === output.length ? output : output.slice(0, entryBytes) });
+      }
     };
     file.start();
   });
@@ -175,22 +213,39 @@ function photoExtractor(inspected) {
       try {
         unzip.push(chunk, final);
       } catch (error) {
-        if (error.kind === ZIP_ERROR_KIND_LIMIT) throw error;
+        if (isZipSafetyLimit(error)) throw error;
         throw new Error(`ZIP을 풀지 못했어요: ${error.message}`);
       }
     },
     finish() {
-      if ([...expected.values()].some((count) => count !== 0)) throw new Error("ZIP을 풀지 못했어요: ZIP의 항목 표가 맞지 않아요.");
-      return files;
+      if ([...declared.values()].some((entries) => entries.length !== 0)) throw new Error("ZIP을 풀지 못했어요: ZIP의 항목 표가 맞지 않아요.");
+      return { files, failures };
     },
   };
 }
 
 function photosFrom(extracted) {
-  const byName = new Map(extracted.map((file) => [file.name, file.bytes]));
-  const names = naturalSort(extracted.map((file) => file.name));
-  if (!names.length) throw new Error("ZIP에서 JPEG 또는 PNG 사진을 찾지 못했어요.");
-  return names.map((name) => ({ name, bytes: byName.get(name), ...inspectPhoto(name, byName.get(name)) }));
+  const byName = new Map(extracted.files.map((file) => [file.name, file.bytes]));
+  const names = naturalSort(extracted.files.map((file) => file.name));
+  if (!names.length && !extracted.failures.length) throw new Error("ZIP에서 JPEG 또는 PNG 사진을 찾지 못했어요.");
+  const photos = names.map((name) => {
+    const bytes = byName.get(name);
+    const photo = { name, bytes, ...inspectPhoto(name, bytes) };
+    if (/\.jpe?g$/i.test(name)) {
+      const judgement = judgeJpegCompleteness(bytes);
+      photo.completeness = judgement.state;
+      photo.completenessReason = judgement.reason;
+    } else {
+      photo.completeness = null;
+      photo.completenessReason = null;
+    }
+    return photo;
+  });
+  const failuresByName = new Map();
+  for (const failure of extracted.failures) failuresByName.set(failure.name, [...(failuresByName.get(failure.name) ?? []), failure]);
+  const orderedFailures = naturalSort(extracted.failures.map((failure) => failure.name)).map((name) => failuresByName.get(name).shift());
+  Object.defineProperty(photos, "failures", { value: orderedFailures, enumerable: false });
+  return photos;
 }
 
 export function readPhotoZip(bytes, overrides) {

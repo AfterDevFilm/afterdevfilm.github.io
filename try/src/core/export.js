@@ -1,7 +1,8 @@
 import { createZipWriter, makeZip } from "../adapters/zip.js";
 import { writePhotoMetadata } from "../adapters/exif.js";
 import { makeExportFilename } from "./export-rules.js";
-import { evaluateInformationFrameLimit, renderInformationFrame } from "./information-frame.js";
+import { evaluateInformationFramePhotoLimit, renderInformationFrame } from "./information-frame.js";
+import { correctedPhotoCanvas, correctedPhotoDimensions, releaseCanvas } from "./photo-correction.js";
 
 export function effectivePaddingRatio(blockWidth, blockHeight, ratio) {
   return blockWidth > blockHeight && (ratio === "4:5" || ratio === "3:4") ? "original" : ratio;
@@ -94,7 +95,7 @@ export async function exportFramedPhotoZip(items, rollName, mode) {
   const files = [];
   const photoOnlyFrames = [];
   for (const item of items) {
-    const frameAllowed = evaluateInformationFrameLimit(item.width, item.height).allowed;
+    const frameAllowed = evaluateInformationFramePhotoLimit(item).allowed;
     const extension = frameAllowed || item.format !== "png" ? "jpg" : "png";
     const nameResult = makeExportFilename({
       roll: rollName, frame: item.frame, width: 2, includeCut: false, cut: null,
@@ -111,41 +112,6 @@ export async function exportFramedPhotoZip(items, rollName, mode) {
     files.push({ name: nameResult.name, bytes: writePhotoMetadata(rendered.bytes, metadata) });
   }
   return { bytes: makeZip(files), files, photoOnlyFrames };
-}
-
-function decodeForExport(item) {
-  const type = item.format === "png" ? "image/png" : "image/jpeg";
-  return createImageBitmap(new Blob([item.bytes], { type }), { imageOrientation: "from-image" });
-}
-
-async function photoCanvas(item) {
-  const image = await decodeForExport(item);
-  const canvas = document.createElement("canvas");
-  try {
-    const correction = item.correction ?? { turns: 0, flipped: false };
-    const sideways = Math.abs(correction.turns) % 2 === 1;
-    canvas.width = sideways ? image.height : image.width;
-    canvas.height = sideways ? image.width : image.height;
-    const context = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
-    context.fillStyle = "white";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.translate(canvas.width / 2, canvas.height / 2);
-    context.scale(correction.flipped ? -1 : 1, 1);
-    context.rotate(correction.turns * Math.PI / 2);
-    context.drawImage(image, -image.width / 2, -image.height / 2);
-    return canvas;
-  } catch (error) {
-    releaseCanvas(canvas);
-    throw error;
-  } finally {
-    if (typeof image.close === "function") image.close();
-  }
-}
-
-/** A canvas keeps its pixel memory until it is collected; shrinking it to 0x0 gives that memory back right away. */
-function releaseCanvas(canvas) {
-  canvas.width = 0;
-  canvas.height = 0;
 }
 
 function canvasBytes(canvas, type, quality) {
@@ -176,7 +142,7 @@ export async function exportConfiguredZip(items, {
   const photoOnlyFrames = [];
   for (const item of items) {
     const metadata = { ...item.record, roll: item.record.rollNumber ?? rollName, frame: item.frame };
-    const frameAllowed = mode === "off" || evaluateInformationFrameLimit(item.width, item.height).allowed;
+    const frameAllowed = mode === "off" || evaluateInformationFramePhotoLimit(item).allowed;
     const actualMode = frameAllowed ? mode : "off";
     if (!frameAllowed) photoOnlyFrames.push(item.frame);
     const nameResult = makeExportFilename({
@@ -187,7 +153,7 @@ export async function exportConfiguredZip(items, {
 
     let bytes;
     let outputName = nameResult.name;
-    let shown = { width: item.width, height: item.height };
+    let shown = correctedPhotoDimensions(item.width, item.height, item.correction);
     const correction = item.correction ?? { turns: 0, flipped: false };
     const unchanged = correction.turns % 4 === 0 && !correction.flipped;
     if (actualMode === "off" && format === "jpeg" && item.format !== "png" && unchanged) {
@@ -196,7 +162,7 @@ export async function exportConfiguredZip(items, {
       const made = [];
       try {
         const rendered = actualMode === "off" ? null : await renderInformationFrame(item, metadata, actualMode, item.frame, quality, rollFrameLabel, rgbHistogram);
-        let canvas = actualMode === "off" ? await photoCanvas(item) : rendered.canvas;
+        let canvas = actualMode === "off" ? await correctedPhotoCanvas(item) : rendered.canvas;
         made.push(canvas);
         if (actualMode !== "off") {
           const blockWidth = canvas.width;

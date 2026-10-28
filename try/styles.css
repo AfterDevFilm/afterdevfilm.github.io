@@ -253,6 +253,36 @@ h2 {
   padding: 2px 0;
 }
 
+.import-failures {
+  margin-bottom: var(--section-gap);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.import-failures h2 {
+  margin-bottom: 12px;
+  font-size: 17px;
+  line-height: 24px;
+}
+.import-failure-row {
+  display: grid;
+  gap: 2px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.import-failure-row p {
+  margin: 0;
+  color: var(--warn);
+  font-size: 15px;
+  line-height: 22px;
+}
+.import-failure-row .text-button {
+  justify-self: start;
+  min-height: 36px;
+  padding: 2px 0;
+}
+
 .roll-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(104px, 0.55fr);
@@ -603,8 +633,14 @@ h2 {
   font-weight: 700;
   line-height: 20px;
 }
-.detail-group { margin-top: var(--section-gap); }
+.detail-group { position: relative; margin-top: var(--section-gap); }
 .detail-group > h2 { margin-bottom: var(--group-title-gap); }
+.scan-replace-button {
+  position: absolute;
+  top: -12px;
+  right: -8px;
+  white-space: nowrap;
+}
 .row-card > .info-row:not(:last-child) { border-bottom: 1px solid var(--line); }
 .cut-detail-rows > .info-row:not(:last-child) { border-bottom: 1px solid var(--line); }
 .info-row-main {

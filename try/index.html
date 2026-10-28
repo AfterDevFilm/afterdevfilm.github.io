@@ -65,7 +65,10 @@
           <button id="bulk-toggle-all" type="button">전체 선택</button>
         </div>
       </header>
-      <button id="bulk-result" class="bulk-result" type="button" role="status" aria-label="결과 알림 닫기" hidden></button>
+      <section id="import-failures" class="import-failures" aria-labelledby="import-failures-title" hidden>
+        <h2 id="import-failures-title"></h2>
+        <div id="import-failure-list"></div>
+      </section>
       <div id="roll-controls" class="roll-controls" aria-label="롤 보기 방식">
         <div class="segmented" id="presentation-toggle">
           <button class="selected" type="button" data-presentation="grid">그리드</button>
@@ -192,6 +195,7 @@
       </section>
       <section class="detail-group" aria-labelledby="scan-info-title">
         <h2 id="scan-info-title">스캔 정보</h2>
+        <button id="replace-scan-button" class="text-button scan-replace-button" type="button">스캔 파일 교체</button>
         <div id="scan-info-card" class="cut-detail-rows"></div>
       </section>
       <section class="detail-group" aria-labelledby="shooting-info-title">
@@ -401,7 +405,9 @@
     </section>
 
     <input id="record-input" type="file" accept=".md,.markdown,.csv,.txt,text/markdown,text/csv,text/plain" hidden>
+    <input id="replace-scan-input" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" hidden>
     <input id="roll-name" value="film001" hidden>
+    <button id="bulk-result" class="bulk-result" type="button" role="status" aria-label="결과 알림 닫기" hidden></button>
   </main>
 
   <div id="dialog-layer" class="dialog-layer" hidden>
@@ -448,6 +454,7 @@
   </div>
 
   <script src="./src/vendor/fflate-0.8.3.js"></script>
+  <script src="./src/vendor/crc-32-1.2.2.js"></script>
   <script src="./src/vendor/papaparse-5.7.0.js"></script>
   <script src="./src/vendor/piexifjs-1.0.6.js"></script>
   <script src="./src/vendor/exifr-7.1.3.js"></script>

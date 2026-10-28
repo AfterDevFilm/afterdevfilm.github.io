@@ -1,3 +1,5 @@
+import { correctedPhotoCanvas, correctedPhotoDimensions, releaseCanvas } from "./photo-correction.js";
+
 const REFERENCE_WIDTH = 1080;
 const SIDE_MARGIN_REF = 18;
 const CENTER_RULE_FRACTION = 0.615;
@@ -11,6 +13,10 @@ const CAPTION_PRIMARY_COLOR = "rgb(30,30,30)";
 const CAPTION_SECONDARY_COLOR = "rgb(55,55,55)";
 const HISTOGRAM_WIDTH_REF = 140;
 const HISTOGRAM_HEIGHT_REF = 22;
+const CONTENT_SCALE = 1.4;
+const TOP_OUTER_MARGIN_REF = 16;
+const TOP_ROW_PHOTO_GAP_REF = 4;
+const BOTTOM_OUTER_MARGIN_REF = 16;
 
 const CAPABILITIES = {
   "iphone-safari": { id: "iphone-safari", photoPixels: 14_000_000, canvasPixels: 16_777_216, maxDimension: 4096 },
@@ -24,6 +30,10 @@ function scaleValue(value, widthScale) {
   return Math.round(value * widthScale);
 }
 
+function scaledReference(baseReference, orientationScale, widthScale, minimumReference = 0, contentScale = 1) {
+  return Math.round(Math.max(minimumReference, baseReference * orientationScale) * contentScale * widthScale);
+}
+
 function geometryAtWidth(photoWidthPx, photoHeightPx, rollFrameOn, outputWidth, rgbHistogramOn = false) {
   const widthScale = outputWidth / REFERENCE_WIDTH;
   const scale = (value) => scaleValue(value, widthScale);
@@ -31,56 +41,63 @@ function geometryAtWidth(photoWidthPx, photoHeightPx, rollFrameOn, outputWidth, 
   const photoWidth = outputWidth - 2 * sideMargin;
   const photoHeight = Math.round(photoWidth * photoHeightPx / photoWidthPx);
   const orientationScale = Math.min(1, photoHeight / photoWidth);
-  const fontPxRef = Math.max(12, Math.round(FONT_SIZE_REF * orientationScale));
-  const topOuterRef = Math.max(3, Math.round(6 * orientationScale)) + 3;
-  const topLabelGapRef = Math.max(4, Math.round(8 * orientationScale));
+  const fontPxRef = Math.max(12, FONT_SIZE_REF * orientationScale);
   const bottomCaptionGapRef = Math.max(6, Math.round(13 * orientationScale));
-  const bottomOuterRef = Math.max(6, Math.round(13 * orientationScale));
-  const rowGapRef = Math.max(fontPxRef + 4, Math.round(28 * orientationScale));
   const leftInsetRef = Math.max(14, Math.round(22 * orientationScale));
   const rightInsetRef = Math.max(16, Math.round(25 * orientationScale));
-  const fontPx = scale(fontPxRef);
-  const topOuterMargin = scale(topOuterRef);
-  const topLabelPhotoGap = scale(topLabelGapRef);
+  const fontPx = Math.round(fontPxRef * CONTENT_SCALE * widthScale);
+  const topOuterMargin = scale(TOP_OUTER_MARGIN_REF);
+  const topLabelPhotoGap = scale(TOP_ROW_PHOTO_GAP_REF);
   const bottomPhotoCaptionGap = scale(bottomCaptionGapRef);
-  const bottomOuterMargin = scale(bottomOuterRef);
-  const rowGap = scale(rowGapRef);
+  const bottomOuterMargin = scale(BOTTOM_OUTER_MARGIN_REF);
+  const captionFontPx = scaledReference(CAPTION_FONT_SIZE_REF, orientationScale, widthScale, 12, CONTENT_SCALE);
+  const minimumCaptionFontPx = scaledReference(CAPTION_FONT_SIZE_REF, orientationScale, widthScale, 12);
+  const rollFrameFontPx = scaledReference(ROLL_FRAME_FONT_SIZE_REF, orientationScale, widthScale, 12, CONTENT_SCALE);
+  const typographyRowGap = scaledReference(CAPTION_ROW_GAP_REF, orientationScale, widthScale, 1, CONTENT_SCALE);
+  const rowGap = typographyRowGap;
   const leftTextInset = scale(leftInsetRef);
   const rightTextInset = scale(rightInsetRef);
   const ruleWidth = Math.max(1, scale(1));
   const topLabelX = sideMargin + scale(2);
   const leftRuleX = sideMargin + scale(1);
   const centerRuleX = Math.round(outputWidth * CENTER_RULE_FRACTION);
-  const rollFrameLabelBaselineY = rollFrameOn ? topOuterMargin + fontPx : null;
   const histogramWidth = rgbHistogramOn ? scale(HISTOGRAM_WIDTH_REF) : null;
   const histogramHeight = rgbHistogramOn ? scale(HISTOGRAM_HEIGHT_REF) : null;
-  const topRowHeight = Math.max(rollFrameOn ? fontPx : 0, histogramHeight ?? 0);
+  const topRowHeight = Math.max(rollFrameOn ? rollFrameFontPx : 0, histogramHeight ?? 0);
+  const rollFrameLabelBaselineY = rollFrameOn ? topOuterMargin + topRowHeight : null;
   const photoY = topOuterMargin + (topRowHeight > 0 ? topRowHeight + topLabelPhotoGap : 0);
-  const captionBlockHeight = fontPx + rowGap;
+  const captionBlockHeight = captionFontPx + rowGap;
   const captionTopY = photoY + photoHeight + bottomPhotoCaptionGap;
+  const canvasHeight = captionTopY + captionBlockHeight + bottomOuterMargin;
   return {
-    canvasWidth: outputWidth, canvasHeight: captionTopY + captionBlockHeight + bottomOuterMargin,
+    canvasWidth: outputWidth, canvasHeight,
     sideMargin, photoWidth, photoHeight, photoX: sideMargin, photoY, topLabelX, leftRuleX, centerRuleX,
     ruleWidth, leftTextInset, rightTextInset, leftColumnWidth: centerRuleX - (leftRuleX + leftTextInset),
     rightColumnWidth: (outputWidth - sideMargin) - (centerRuleX + rightTextInset),
     rollFrameLabelBaselineY,
     histogramX: histogramWidth == null ? null : outputWidth - sideMargin - histogramWidth,
-    histogramY: rgbHistogramOn ? topOuterMargin : null, histogramWidth, histogramHeight,
-    captionTopY, captionBlockHeight, orientationScale, widthScale,
-    captionFontPx: scale(Math.max(12, Math.round(CAPTION_FONT_SIZE_REF * orientationScale))),
-    rollFrameFontPx: scale(Math.max(12, Math.round(ROLL_FRAME_FONT_SIZE_REF * orientationScale))),
-    typographyRowGap: scale(Math.max(1, Math.round(CAPTION_ROW_GAP_REF * orientationScale))),
+    histogramY: histogramHeight == null ? null : topOuterMargin + topRowHeight - histogramHeight,
+    histogramWidth, histogramHeight, captionTopY, captionBlockHeight,
+    ruleEndY: captionTopY + captionBlockHeight - ruleWidth,
+    topOuterMargin, topLabelPhotoGap, bottomPhotoCaptionGap, bottomOuterMargin,
+    fontPx, rowGap, orientationScale, widthScale,
+    captionFontPx, minimumCaptionFontPx, rollFrameFontPx, typographyRowGap,
   };
 }
 
-export function computeInformationFrameGeometry(photoWidth, photoHeight, rollFrameOn = true, rgbHistogramOn = false) {
+export function computeInformationFrameGeometry(photoWidth, photoHeight, rollFrameOn = true, rgbHistogramOn = false, requestedOutputWidth = null) {
   if (!Number.isInteger(photoWidth) || !Number.isInteger(photoHeight) || photoWidth <= 0 || photoHeight <= 0) {
     throw new Error("사진 크기는 양의 정수여야 해요.");
   }
-  let outputWidth = photoWidth;
-  while (geometryAtWidth(photoWidth, photoHeight, rollFrameOn, outputWidth, rgbHistogramOn).photoWidth !== photoWidth) outputWidth += 1;
+  if (requestedOutputWidth !== null && (!Number.isInteger(requestedOutputWidth) || requestedOutputWidth <= 0)) {
+    throw new Error("출력 너비는 양의 정수여야 해요.");
+  }
+  let outputWidth = requestedOutputWidth ?? photoWidth;
+  if (requestedOutputWidth === null) {
+    while (geometryAtWidth(photoWidth, photoHeight, rollFrameOn, outputWidth, rgbHistogramOn).photoWidth !== photoWidth) outputWidth += 1;
+  }
   const geometry = geometryAtWidth(photoWidth, photoHeight, rollFrameOn, outputWidth, rgbHistogramOn);
-  if (geometry.photoHeight !== photoHeight) throw new Error("사진 크기를 그대로 둘 수 없어요.");
+  if (requestedOutputWidth === null && geometry.photoHeight !== photoHeight) throw new Error("사진 크기를 그대로 둘 수 없어요.");
   return geometry;
 }
 
@@ -145,13 +162,18 @@ export function browserCanvasCapability(userAgent = navigator.userAgent) {
   return { ...CAPABILITIES.other };
 }
 
-export function evaluateInformationFrameLimit(width, height, capability = browserCanvasCapability(), rgbHistogramOn = false) {
-  const geometry = computeInformationFrameGeometry(width, height, true, rgbHistogramOn);
+export function evaluateInformationFrameLimit(width, height, capability = browserCanvasCapability(), rgbHistogramOn = false, rollFrameOn = true) {
+  const geometry = computeInformationFrameGeometry(width, height, rollFrameOn, rgbHistogramOn);
   const sourcePixels = width * height;
   const canvasPixels = geometry.canvasWidth * geometry.canvasHeight;
   const allowed = sourcePixels <= capability.photoPixels && canvasPixels <= capability.canvasPixels
     && geometry.canvasWidth <= capability.maxDimension && geometry.canvasHeight <= capability.maxDimension;
   return { allowed, message: allowed ? "" : FRAME_TOO_LARGE, sourcePixels, canvasPixels, geometry, capability };
+}
+
+export function evaluateInformationFramePhotoLimit(photo, capability = browserCanvasCapability(), rgbHistogramOn = false, rollFrameOn = true) {
+  const dimensions = correctedPhotoDimensions(photo.width, photo.height, photo.correction);
+  return evaluateInformationFrameLimit(dimensions.width, dimensions.height, capability, rgbHistogramOn, rollFrameOn);
 }
 
 export function formatFrameAperture(value) {
@@ -215,42 +237,42 @@ function fitText(context, text, maxWidth) {
   return result ? `${result}…` : "";
 }
 
-export function drawInformationFrameLine(context, segments, x, baselineY, maxWidth, fontPx) {
+export function drawInformationFrameLine(context, segments, x, baselineY, maxWidth, fontPx, minimumFontPx = fontPx) {
   if (!segments.length || maxWidth <= 0) return;
   const joined = formatInformationFrameLine(segments);
-  context.font = `${fontPx}px "Noto Sans KR Frame"`;
-  if (context.measureText(joined).width > maxWidth) {
+  const measuredWidth = (size) => segments.reduce((width, part, index) => {
+    context.font = `${part.bold ? 700 : 400} ${size}px "Noto Sans KR Frame"`;
+    const partWidth = context.measureText(part.text).width;
+    if (index === segments.length - 1) return width + partWidth;
+    context.font = `400 ${size}px "Noto Sans KR Frame"`;
+    return width + partWidth + context.measureText(CAPTION_SEPARATOR).width;
+  }, 0);
+  let fittedFontPx = null;
+  for (let size = fontPx; size >= minimumFontPx; size -= 1) {
+    if (measuredWidth(size) <= maxWidth) {
+      fittedFontPx = size;
+      break;
+    }
+  }
+  if (fittedFontPx === null) {
+    context.font = `400 ${minimumFontPx}px "Noto Sans KR Frame"`;
     context.fillStyle = CAPTION_SECONDARY_COLOR;
     context.fillText(fitText(context, joined, maxWidth), x, baselineY);
     return;
   }
   let cursor = x;
   segments.forEach((part, index) => {
-    context.font = `${part.bold ? 700 : 400} ${fontPx}px "Noto Sans KR Frame"`;
+    context.font = `${part.bold ? 700 : 400} ${fittedFontPx}px "Noto Sans KR Frame"`;
     context.fillStyle = part.bold ? CAPTION_PRIMARY_COLOR : CAPTION_SECONDARY_COLOR;
     context.fillText(part.text, cursor, baselineY);
     cursor += context.measureText(part.text).width;
     if (index < segments.length - 1) {
-      context.font = `400 ${fontPx}px "Noto Sans KR Frame"`;
+      context.font = `400 ${fittedFontPx}px "Noto Sans KR Frame"`;
       context.fillStyle = CAPTION_SECONDARY_COLOR;
       context.fillText(CAPTION_SEPARATOR, cursor, baselineY);
       cursor += context.measureText(CAPTION_SEPARATOR).width;
     }
   });
-}
-
-async function decodePhoto(bytes, format) {
-  const blob = new Blob([bytes], { type: format === "png" ? "image/png" : "image/jpeg" });
-  if (globalThis.createImageBitmap) return createImageBitmap(blob, { imageOrientation: "from-image" });
-  const url = URL.createObjectURL(blob);
-  try {
-    const image = new Image();
-    image.src = url;
-    await image.decode();
-    return image;
-  } finally {
-    URL.revokeObjectURL(url);
-  }
 }
 
 function canvasJpegBytes(canvas, quality) {
@@ -261,34 +283,45 @@ function canvasJpegBytes(canvas, quality) {
 }
 
 export async function renderInformationFrame(photo, record, mode, frame, quality = 0.85, rollFrameOn = true, rgbHistogramOn = false) {
-  const limit = evaluateInformationFrameLimit(photo.width, photo.height, browserCanvasCapability(), rgbHistogramOn);
-  if (!limit.allowed) throw new Error(limit.message);
-  await Promise.all([document.fonts.load('400 16px "Noto Sans KR Frame"'), document.fonts.load('700 16px "Noto Sans KR Frame"')]);
-  const image = await decodePhoto(photo.bytes, photo.format);
-  const geometry = computeInformationFrameGeometry(photo.width, photo.height, rollFrameOn, rgbHistogramOn);
-  const canvas = document.createElement("canvas");
-  canvas.width = geometry.canvasWidth;
-  canvas.height = geometry.canvasHeight;
-  const context = canvas.getContext("2d", { alpha: false });
-  context.fillStyle = "white";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.drawImage(image, geometry.photoX, geometry.photoY, geometry.photoWidth, geometry.photoHeight);
-  if (rgbHistogramOn) drawHistogram(context, geometry, histogramFromDecodedImage(image));
-  if (typeof image.close === "function") image.close();
-  context.textBaseline = "alphabetic";
-  context.font = `400 ${geometry.rollFrameFontPx}px "Noto Sans KR Frame"`;
-  context.fillStyle = "rgb(70,70,70)";
   const rollFrameLabel = rollFrameOn ? formatRollFrameLabel(record.rollNumber, frame) : null;
-  if (rollFrameLabel) context.fillText(rollFrameLabel, geometry.topLabelX, geometry.rollFrameLabelBaselineY);
-  context.fillStyle = "rgb(115,115,115)";
-  context.fillRect(geometry.leftRuleX, geometry.captionTopY, geometry.ruleWidth, geometry.captionBlockHeight);
-  context.fillRect(geometry.centerRuleX, geometry.captionTopY, geometry.ruleWidth, geometry.captionBlockHeight);
-  const caption = buildInformationFrameCaption(record, mode);
-  const line1Y = geometry.captionTopY + geometry.captionFontPx;
-  const line2Y = line1Y + geometry.typographyRowGap;
-  drawInformationFrameLine(context, caption.left[0], geometry.leftRuleX + geometry.leftTextInset, line1Y, geometry.leftColumnWidth, geometry.captionFontPx);
-  drawInformationFrameLine(context, caption.left[1], geometry.leftRuleX + geometry.leftTextInset, line2Y, geometry.leftColumnWidth, geometry.captionFontPx);
-  drawInformationFrameLine(context, caption.right[0], geometry.centerRuleX + geometry.rightTextInset, line1Y, geometry.rightColumnWidth, geometry.captionFontPx);
-  drawInformationFrameLine(context, caption.right[1], geometry.centerRuleX + geometry.rightTextInset, line2Y, geometry.rightColumnWidth, geometry.captionFontPx);
-  return { bytes: await canvasJpegBytes(canvas, quality), canvas, geometry };
+  const effectiveRollFrameOn = rollFrameLabel !== null;
+  const preflight = evaluateInformationFramePhotoLimit(photo, browserCanvasCapability(), rgbHistogramOn, effectiveRollFrameOn);
+  if (!preflight.allowed) throw new Error(preflight.message);
+  await Promise.all([document.fonts.load('400 16px "Noto Sans KR Frame"'), document.fonts.load('700 16px "Noto Sans KR Frame"')]);
+  const corrected = await correctedPhotoCanvas(photo);
+  let canvas = null;
+  try {
+    const limit = evaluateInformationFrameLimit(corrected.width, corrected.height, browserCanvasCapability(), rgbHistogramOn, effectiveRollFrameOn);
+    if (!limit.allowed) throw new Error(limit.message);
+    const geometry = limit.geometry;
+    canvas = document.createElement("canvas");
+    canvas.width = geometry.canvasWidth;
+    canvas.height = geometry.canvasHeight;
+    const context = canvas.getContext("2d", { alpha: false });
+    context.fillStyle = "white";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(corrected, geometry.photoX, geometry.photoY, geometry.photoWidth, geometry.photoHeight);
+    if (rgbHistogramOn) drawHistogram(context, geometry, histogramFromDecodedImage(corrected));
+    context.textBaseline = "alphabetic";
+    context.font = `400 ${geometry.rollFrameFontPx}px "Noto Sans KR Frame"`;
+    context.fillStyle = "rgb(70,70,70)";
+    if (rollFrameLabel) context.fillText(rollFrameLabel, geometry.topLabelX, geometry.rollFrameLabelBaselineY);
+    context.fillStyle = "rgb(115,115,115)";
+    const ruleHeight = geometry.captionBlockHeight - geometry.ruleWidth + 1;
+    context.fillRect(geometry.leftRuleX, geometry.captionTopY, geometry.ruleWidth, ruleHeight);
+    context.fillRect(geometry.centerRuleX, geometry.captionTopY, geometry.ruleWidth, ruleHeight);
+    const caption = buildInformationFrameCaption(record, mode);
+    const line1Y = geometry.captionTopY + geometry.captionFontPx;
+    const line2Y = line1Y + geometry.typographyRowGap;
+    drawInformationFrameLine(context, caption.left[0], geometry.leftRuleX + geometry.leftTextInset, line1Y, geometry.leftColumnWidth, geometry.captionFontPx, geometry.minimumCaptionFontPx);
+    drawInformationFrameLine(context, caption.left[1], geometry.leftRuleX + geometry.leftTextInset, line2Y, geometry.leftColumnWidth, geometry.captionFontPx, geometry.minimumCaptionFontPx);
+    drawInformationFrameLine(context, caption.right[0], geometry.centerRuleX + geometry.rightTextInset, line1Y, geometry.rightColumnWidth, geometry.captionFontPx, geometry.minimumCaptionFontPx);
+    drawInformationFrameLine(context, caption.right[1], geometry.centerRuleX + geometry.rightTextInset, line2Y, geometry.rightColumnWidth, geometry.captionFontPx, geometry.minimumCaptionFontPx);
+    return { bytes: await canvasJpegBytes(canvas, quality), canvas, geometry };
+  } catch (error) {
+    if (canvas) releaseCanvas(canvas);
+    throw error;
+  } finally {
+    releaseCanvas(corrected);
+  }
 }

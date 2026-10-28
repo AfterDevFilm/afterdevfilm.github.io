@@ -3,11 +3,16 @@ import { parseCsvRecord, parseMarkdownRecord, unknownColumnsLine } from "./core/
 import { matchCutsToPhotos } from "./core/match.js";
 import { applyPaddingRatioCanvas, downloadBytes, exportConfiguredZip } from "./core/export.js";
 import { compactNumbers, groupExcludedLines, makeExportArchiveFilename } from "./core/export-rules.js";
-import { evaluateInformationFrameLimit, renderInformationFrame, showsRGBHistogramControl } from "./core/information-frame.js";
+import { evaluateInformationFramePhotoLimit, renderInformationFrame, showsRGBHistogramControl } from "./core/information-frame.js";
 import { defaultRollName } from "./core/default-roll-name.js";
 import { resolveCutField, resolveCutRecord } from "./core/roll-values.js";
 import { groupShareFiles, makeShareFiles } from "./core/share.js";
 import { shownPhotoDimensions } from "./core/image-format.js";
+import { JPEG_COMPLETENESS, judgeJpegCompleteness } from "./core/jpeg-completeness.js";
+import {
+  SCAN_REPLACED_MESSAGE, SCAN_REPLACEMENT_READ_FAILURE, SCAN_UNREADABLE_MESSAGE,
+  applyScanReplacement, stageScanReplacement,
+} from "./core/scan-replacement.js";
 import { normalizeBulb, sharedCopy, shouldShowExifReason } from "./core/value-rules.js";
 import { inputSuggestionAsk } from "./core/input-suggestion.js";
 import {
@@ -45,7 +50,7 @@ const rollGroups = [
 ];
 
 const state = {
-  photos: [], records: [], cutValues: [], roll: {}, items: [], mode: null,
+  photos: [], importFailures: [], records: [], cutValues: [], roll: {}, items: [], mode: null,
   screen: "start", returnScreen: "roll", presentation: "grid", columns: 2,
   currentCut: 0, previewToken: 0, thumbnailToken: 0, shareSession: null,
   orientation: {}, cutMeta: {}, recent: {}, editing: null, dialog: null, rollAskPending: true,
@@ -91,6 +96,7 @@ const appPreviews = {
 const byId = (id) => document.getElementById(id);
 const zipInput = byId("zip-input");
 const recordInput = byId("record-input");
+const replaceScanInput = byId("replace-scan-input");
 const dropZone = byId("drop-zone");
 const startStatus = byId("status");
 const exportStatus = byId("export-status");
@@ -148,7 +154,7 @@ function combinedRecord(record, cut) {
 
 function refreshItems() {
   const base = matchCutsToPhotos(state.photos, state.records).map((item, index) => {
-    const cutId = item.name;
+    const cutId = item.cutId ?? item.name;
     if (!(cutId in state.frameByCut)) state.frameByCut[cutId] = item.frame;
     return { ...item, cutId, originalIndex: index };
   });
@@ -190,6 +196,21 @@ function photoBlob(item) {
   return new Blob([item.bytes], { type: item.format === "png" ? "image/png" : "image/jpeg" });
 }
 
+function completenessBlocksExport(item) {
+  return item?.completeness === JPEG_COMPLETENESS.INCOMPLETE
+    || item?.completeness === JPEG_COMPLETENESS.UNDETERMINED
+    || item?.completeness === JPEG_COMPLETENESS.NOT_JPEG;
+}
+
+function reassessUndetermined(items) {
+  for (const item of items) {
+    if (item.completeness !== JPEG_COMPLETENESS.UNDETERMINED) continue;
+    const judgement = judgeJpegCompleteness(item.bytes);
+    item.completeness = judgement.state;
+    item.completenessReason = judgement.reason;
+  }
+}
+
 function photoCorrection(item) {
   return state.orientation[item.cutId] ?? { turns: 0, flipped: false };
 }
@@ -229,6 +250,7 @@ function renderRoll() {
   byId("photo-count").textContent = state.items.length;
   byId("roll-title").textContent = rollNameInput.value.trim() || defaultRollName();
   byId("roll-screen").classList.toggle("roll-screen-bulk", state.bulkEditing);
+  renderImportFailures();
   byId("roll-normal-header").hidden = state.bulkEditing;
   byId("roll-controls").hidden = state.bulkEditing;
   byId("bulk-edit-header").hidden = !state.bulkEditing;
@@ -285,6 +307,30 @@ function renderRoll() {
   updateBulkControls();
   updateToggles();
   updateShareAvailability();
+}
+
+function renderImportFailures() {
+  const section = byId("import-failures");
+  const failures = state.importFailures;
+  section.hidden = state.bulkEditing || failures.length === 0;
+  byId("import-failures-title").textContent = failures.length ? `읽지 못한 사진 ${failures.length}장은 빼고 가져와요.` : "";
+  const list = byId("import-failure-list");
+  list.replaceChildren();
+  for (const failure of failures) {
+    const row = document.createElement("article");
+    row.className = "import-failure-row";
+    const name = document.createElement("strong");
+    name.textContent = failure.name.replace(/\\/g, "/").split("/").pop();
+    const reason = document.createElement("p");
+    reason.textContent = failure.message;
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "text-button";
+    action.textContent = "다른 파일 선택";
+    action.addEventListener("click", () => zipInput.click());
+    row.append(name, reason, action);
+    list.append(row);
+  }
 }
 
 function selectedBulkItems() {
@@ -400,8 +446,10 @@ function renderCut() {
 
   byId("scan-info-card").replaceChildren(
     makeInfoRow({ label: "파일 이름", value: item.name, emptyText: "—" }),
+    ...(completenessBlocksExport(item)
+      ? [makeInfoRow({ label: "원본 상태", value: SCAN_UNREADABLE_MESSAGE })]
+      : []),
   );
-
   byId("roll-info-hint").hidden = !rollIsEmpty();
   const shootingCard = byId("shooting-info-card");
   shootingCard.replaceChildren();
@@ -821,8 +869,9 @@ async function renderPreview() {
     question.innerHTML = "사진 아래에 카메라·필름 같은 촬영 정보를 넣을 수 있어요.<br>아래에서 고르면 여기에 미리보기가 나와요.";
     return;
   }
-  const item = currentExportItems()[0] ?? state.items[0];
-  if (state.mode !== "off" && !evaluateInformationFrameLimit(item.width, item.height).allowed) {
+  const fallback = state.items[0];
+  const item = currentExportItems()[0] ?? { ...fallback, correction: photoCorrection(fallback) };
+  if (state.mode !== "off" && !evaluateInformationFramePhotoLimit(item).allowed) {
     question.textContent = "이 사진은 웹에서 원본 크기 그대로 액자를 넣기엔 커요.";
     largeApp.hidden = !state.appPreviewAvailable.large;
     previewWrap.classList.add("limit");
@@ -880,11 +929,14 @@ function updateExportControls() {
   const chosen = state.exportSelection.size;
   byId("selected-cut-count").textContent = `${chosen}컷 선택 (전체 ${state.items.length}컷)`;
   byId("toggle-all-cuts").textContent = chosen === state.items.length ? "전체 해제" : "전체 선택";
+  const selected = currentExportItems();
+  const blocked = selected.some(completenessBlocksExport);
   const blocker = state.mode === null
     ? "사진만·간단히·자세히 중에서 하나를 골라 주세요."
-    : chosen === 0 ? "내보낼 컷을 골라 주세요." : "";
+    : chosen === 0 ? "내보낼 컷을 골라 주세요."
+      : blocked ? "스캔 파일을 열 수 없어요." : "";
   byId("export-blocker").textContent = blocker;
-  exportButton.disabled = Boolean(blocker);
+  exportButton.disabled = state.mode === null || chosen === 0;
   exportButton.textContent = `전체 ${chosen}장 내보내기`;
 }
 
@@ -1122,6 +1174,7 @@ async function receiveZip(file, { askRollInfo = true } = {}) {
     const photos = await readPhotoZipBlob(file);
     thumbnailCache.clear();
     state.photos = photos;
+    state.importFailures = photos.failures ?? [];
     state.exampleActive = false;
     state.exampleRecordBytes = null;
     state.cutOrder = [];
@@ -1135,7 +1188,7 @@ async function receiveZip(file, { askRollInfo = true } = {}) {
     invalidateShareSession();
     renderRoll();
     showScreen("roll");
-    if (state.rollAskPending && rollIsEmpty()) {
+    if (state.rollAskPending && photos.length > 0 && rollIsEmpty()) {
       state.rollAskPending = false;
       showDialog({
         title: "롤 정보를 넣을까요?",
@@ -1491,6 +1544,37 @@ byId("field-revert").addEventListener("click", () => {
 });
 byId("previous-cut").addEventListener("click", () => { if (state.currentCut > 0) { state.currentCut -= 1; renderCut(); window.scrollTo(0, 0); } });
 byId("next-cut").addEventListener("click", () => { if (state.currentCut < state.items.length - 1) { state.currentCut += 1; renderCut(); window.scrollTo(0, 0); } });
+byId("replace-scan-button").addEventListener("click", () => {
+  showBulkNotice("");
+  showDialog({
+    title: "이 컷의 스캔을 교체할까요?",
+    body: "회전·반전은 새로 맞춰야 해요.\n이전에 내보낸 파일은 그대로예요.",
+    cancel: "취소",
+    confirm: "교체하기",
+    onCancel: () => {},
+    onConfirm: () => replaceScanInput.click(),
+  });
+});
+replaceScanInput.addEventListener("change", async () => {
+  const current = state.items[state.currentCut];
+  const file = replaceScanInput.files[0] ?? null;
+  try {
+    const staged = await stageScanReplacement(file);
+    const replacement = applyScanReplacement(current, staged);
+    if (!replacement.changed) return;
+    state.photos[current.originalIndex] = replacement.photo;
+    delete state.orientation[current.cutId];
+    thumbnailCache.clear();
+    invalidateShareSession();
+    renderCut();
+    showBulkNotice(replacement.message);
+  } catch {
+    renderCut();
+    showBulkNotice(SCAN_REPLACEMENT_READ_FAILURE);
+  } finally {
+    replaceScanInput.value = "";
+  }
+});
 for (const button of document.querySelectorAll("[data-orientation]")) {
   button.addEventListener("click", () => {
     const item = state.items[state.currentCut];
@@ -1582,6 +1666,11 @@ exportButton.addEventListener("click", async () => {
   try {
     exportButton.disabled = true;
     setExportReasons();
+    const selected = currentExportItems();
+    reassessUndetermined(selected);
+    if (selected.some(completenessBlocksExport)) {
+      throw new Error("스캔 파일을 열 수 없어 내보내지 않았어요.");
+    }
     setStatus("내보낼 사진을 만들고 있어요.", false, exportStatus);
     const started = performance.now();
     const rollName = rollNameInput.value || defaultRollName();
@@ -1662,6 +1751,7 @@ window.addEventListener("pagehide", () => thumbnailCache.clear());
 
 if (new URLSearchParams(location.search).get("demo") === "1") {
   state.photos = ["scan_1.jpg", "scan_2.jpg", "scan_10.jpg"].map((name) => ({ name, bytes: new Uint8Array() }));
+  state.importFailures = [];
   state.roll = { camera: "합성 카메라", lens: "50mm", film: "합성 필름", ei: "400" };
   state.records = [
     { n: 1, ap: "f/5.6", sh: "1/250", focal: "50", ev: "+0.0" },
