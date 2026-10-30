@@ -1,5 +1,5 @@
 import { readPhotoZipBlob, WEB_ZIP_LIMITS, ZIP_ERROR_KIND_LIMIT } from "./adapters/zip.js";
-import { parseCsvRecord, parseMarkdownRecord, unknownColumnsLine } from "./core/record.js";
+import { parseCsvRecord, parseMarkdownRecord, recordUnreadEntries, unknownColumnsLine } from "./core/record.js";
 import { matchCutsToPhotos } from "./core/match.js";
 import { applyPaddingRatioCanvas, downloadBytes, exportConfiguredZip } from "./core/export.js";
 import { compactNumbers, groupExcludedLines, makeExportArchiveFilename } from "./core/export-rules.js";
@@ -35,7 +35,7 @@ const shootingFields = [
   { key: "ev", label: "노출 보정", cutOnly: true },
   { key: "film", label: "필름", recent: true },
   { key: "maker", label: "필름 제조사", recent: true },
-  { key: "boxSpeed", label: "박스 감도", placeholder: "숫자만 입력" },
+  { key: "boxSpeed", label: "박스 감도", placeholder: "ISO 숫자만 입력" },
   { key: "ei", label: "노출 지수(EI)" },
   { key: "process", label: "현상 방식", choices: ["C-41", "ECN-2", "E-6", "B&W"] },
   { key: "lab", label: "현상소", recent: true },
@@ -1050,7 +1050,7 @@ function openBulkNumberMenu() {
     { label: "+1", action: () => applyBulkPositions(shiftSelection(currentPositions(), selected, 1)) },
     { label: "−1", action: () => applyBulkPositions(shiftSelection(currentPositions(), selected, -1)) },
     { label: "몇부터 다시 매기기", action: () => openCommandEditor({
-      label: "컷 번호 새로 매기기", key: "frame", placeholder: "시작 번호", inputMode: "numeric",
+      label: "컷 번호 다시 매기기", key: "frame", placeholder: "시작 번호", inputMode: "numeric",
       onApply: (value) => {
         const start = Number(value);
         if (Number.isInteger(start) && start >= 1) applyBulkPositions(renumberSelection(currentPositions(), selected, start));
@@ -1325,17 +1325,16 @@ function confirmRecordImport() {
 async function receiveRecord(file) {
   try {
     const text = await file.text();
-    const parsed = file.name.toLowerCase().endsWith(".csv") ? parseCsvRecord(text) : parseMarkdownRecord(text, { filename: file.name });
-    const sourceLines = text.replace(/\r\n?/g, "\n").split("\n");
-    const raw = parsed.unreadRaw ?? parsed.unread.map((line) => sourceLines[line - 1] ?? "");
+    const parsed = file.name.toLowerCase().endsWith(".csv") ? parseCsvRecord(text) : parseMarkdownRecord(text);
     state.pendingRecord = {
       fileName: file.name,
       parsed,
-      unreadRaw: parsed.unread.map((line, index) => ({ line, text: raw[index] ?? sourceLines[line - 1] ?? "" })),
+      unreadRaw: recordUnreadEntries(parsed, text),
     };
     renderRecordConfirmation();
     showScreen("record-confirm");
   } catch (error) {
+    state.pendingRecord = null;
     byId("record-name").textContent = error.message;
     byId("record-name").classList.add("error-text");
     showScreen("roll-info");

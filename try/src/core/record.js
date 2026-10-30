@@ -1,6 +1,34 @@
 import { cleanExposureRational } from "./value-rules.js";
 import { TEMPLATE_CONFIRMATION_KIND } from "./template-import.js";
 
+export const MAX_TEMPLATE_PHYSICAL_LINES = 1000;
+export const TEMPLATE_RECORD_TOO_LARGE = "TOO_LARGE";
+export const TEMPLATE_RECORD_TOO_LARGE_MESSAGE = "파일이 너무 커서 불러오지 않았어요.";
+
+export function countTemplatePhysicalLines(text) {
+  const value = String(text ?? "");
+  let lines = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== "\r" && value[index] !== "\n") continue;
+    lines += 1;
+    if (value[index] === "\r" && value[index + 1] === "\n") index += 1;
+  }
+  if (value && value.at(-1) !== "\r" && value.at(-1) !== "\n") lines += 1;
+  return lines;
+}
+
+export function templateRecordReadState(text) {
+  return countTemplatePhysicalLines(text) > MAX_TEMPLATE_PHYSICAL_LINES ? TEMPLATE_RECORD_TOO_LARGE : "READ";
+}
+
+function assertTemplateRecordLineLimit(text) {
+  if (templateRecordReadState(text) !== TEMPLATE_RECORD_TOO_LARGE) return;
+  const error = new Error(TEMPLATE_RECORD_TOO_LARGE_MESSAGE);
+  error.kind = TEMPLATE_RECORD_TOO_LARGE;
+  error.recordCount = 0;
+  throw error;
+}
+
 export const headerAliases = [
   ["롤 이름", "rollIdentifier"], ["roll", "rollIdentifier"],
   ["카메라", "camera"], ["camera", "camera"], ["바디", "camera"], ["렌즈", "lens"], ["lens", "lens"],
@@ -76,7 +104,8 @@ export function unknownColumnsLine(columns) {
 function usableRollValue(field, value) {
   const clean = parseQuoted(value);
   if (!clean || clean === "미확정") return null;
-  if (field === "ei" && !/^\d+(?:\.\d+)?$/.test(clean)) return null;
+  if (field === "ei" && !/^\d+$/.test(clean)) return null;
+  if (field === "boxSpeed" && !/^\d+$/.test(clean)) return null;
   return clean;
 }
 
@@ -110,6 +139,11 @@ function visibleMarkdownLines(text) {
     }
     return visible;
   });
+}
+
+export function recordUnreadEntries(parsed, text) {
+  const sourceLines = String(text).replace(/\r\n?/g, "\n").split("\n");
+  return parsed.unread.map((line) => ({ line, text: sourceLines[line - 1] ?? "" }));
 }
 
 function normalizeAperture(raw) {
@@ -308,13 +342,13 @@ function parsePlainCut(line) {
   return cut;
 }
 
-export function parseMarkdownRecord(text, options = {}) {
+export function parseMarkdownRecord(text) {
+  assertTemplateRecordLineLimit(text);
   const lines = visibleMarkdownLines(text);
   if (lines.at(-1) === "") lines.pop();
   const candidates = new Map();
   const blockedFields = new Set();
   const unread = new Set();
-  const unreadRaw = [];
   const cuts = [];
   const cutRows = [];
   const confirmations = [];
@@ -324,7 +358,9 @@ export function parseMarkdownRecord(text, options = {}) {
   function addCandidate(field, value, lineNumber) {
     const clean = usableRollValue(field, value);
     if (!clean) {
-      if (String(value).trim()) unread.add(lineNumber);
+      if (String(value).trim()) {
+        unread.add(lineNumber);
+      }
       return;
     }
     if (!candidates.has(field)) candidates.set(field, []);
@@ -352,10 +388,8 @@ export function parseMarkdownRecord(text, options = {}) {
         else {
           blockedFields.add("lens");
           unread.add(lineNumber);
-          if (options.filename === "two-roll-lenses.md") unreadRaw.push(line);
           for (const item of items) {
             unread.add(item.line);
-            if (options.filename === "two-roll-lenses.md") unreadRaw.push(lines[item.line - 1]);
           }
         }
         index = cursor - 1;
@@ -392,7 +426,6 @@ export function parseMarkdownRecord(text, options = {}) {
           const field = tableKey.toLowerCase() === "roll_id" ? null : canonicalRollKey(tableKey);
           if (!field) {
             unread.add(row.line);
-            if (stripMarkup(row.cells[0]).toLowerCase() === "roll_id") unreadRaw.push(row.raw);
           } else if (blockedFields.has(field)) {
             unread.add(row.line);
           } else addCandidate(field, row.cells[1], row.line);
@@ -456,11 +489,15 @@ export function parseMarkdownRecord(text, options = {}) {
   }
   appendDuplicateNumberConfirmations(cutRows, confirmations);
   const result = { roll, cuts, unread: [...unread].sort((a, b) => a - b), confirmations, unknownColumns };
-  if (unreadRaw.length) result.unreadRaw = unreadRaw;
+  if (result.unread.length) {
+    const sourceLines = String(text).replace(/\r\n?/g, "\n").split("\n");
+    result.unreadRaw = result.unread.map((line) => sourceLines[line - 1] ?? "");
+  }
   return result;
 }
 
 export function parseCsvRecord(text, papa = globalThis.Papa) {
+  assertTemplateRecordLineLimit(text);
   if (!papa) throw new Error("CSV parser is not ready");
   const parsed = papa.parse(text, { skipEmptyLines: false });
   if (parsed.errors.length) throw new Error(`CSV를 읽지 못했어요: ${parsed.errors[0].message}`);

@@ -21,6 +21,10 @@ function codeUnitCompare(left, right) {
   return left.length - right.length;
 }
 
+export function rollIdentifierKey(value) {
+  return String(value ?? "").normalize("NFD").toLowerCase().normalize("NFD");
+}
+
 function byteCompare(left, right) {
   const encoder = new TextEncoder();
   const a = encoder.encode(left);
@@ -47,4 +51,14 @@ export function naturalCompare(leftValue, rightValue) {
 
 export function naturalSort(values) {
   return [...values].sort(naturalCompare);
+}
+
+export function orderRollRows(rows) {
+  return [...rows].sort((left, right) => {
+    const keyOrder = naturalCompare(
+      left.roll_identifier_key ?? rollIdentifierKey(left.name),
+      right.roll_identifier_key ?? rollIdentifierKey(right.name),
+    );
+    return keyOrder || codeUnitCompare(String(left.id), String(right.id));
+  });
 }
