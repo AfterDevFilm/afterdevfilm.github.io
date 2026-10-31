@@ -13,6 +13,7 @@ const PHOTO_NAME = /\.(?:jpe?g|png)$/i;
 const FILE_CONTENT_MESSAGE = "파일을 읽지 못했어요.";
 
 export const ZIP_ERROR_KIND_LIMIT = "limit";
+export const ZIP_ERROR_KIND_DECLARED_SIZE_EXCEEDED = "declaredSizeExceeded";
 
 export const WEB_ZIP_LIMITS = Object.freeze({
   maxZipBytes: 256 * MIB,
@@ -68,6 +69,16 @@ function tooLarge(limit) {
 
 function isZipSafetyLimit(error) {
   return error?.kind === ZIP_ERROR_KIND_LIMIT;
+}
+
+function isDeclaredSizeExceeded(error) {
+  return error?.kind === ZIP_ERROR_KIND_DECLARED_SIZE_EXCEEDED;
+}
+
+function declaredSizeExceeded() {
+  const error = new Error("ZIP을 풀지 못했어요: ZIP의 항목 표가 맞지 않아요.");
+  error.kind = ZIP_ERROR_KIND_DECLARED_SIZE_EXCEEDED;
+  return error;
 }
 
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
@@ -292,7 +303,7 @@ function photoExtractor(inspected) {
     let failed = false;
     file.ondata = (error, chunk, final) => {
       if (error) {
-        if (isZipSafetyLimit(error)) throw error;
+        if (isZipSafetyLimit(error) || isDeclaredSizeExceeded(error)) throw error;
         if (!failed) failures.push(fileContentFailure(entry.name));
         failed = true;
         output = null;
@@ -309,7 +320,7 @@ function photoExtractor(inspected) {
           failures.push(fileContentFailure(entry.name, "checksumMismatch"));
           return;
         }
-        throw tooLarge("singleEntryUncompressedBytes");
+        throw declaredSizeExceeded();
       }
       entryBytes = nextEntryBytes;
       if (entry.keepPhoto) totalBytes += chunk.length;
@@ -337,7 +348,7 @@ function photoExtractor(inspected) {
       try {
         unzip.push(chunk, final);
       } catch (error) {
-        if (isZipSafetyLimit(error)) throw error;
+        if (isZipSafetyLimit(error) || isDeclaredSizeExceeded(error)) throw error;
         throw new Error(`ZIP을 풀지 못했어요: ${error.message}`);
       }
     },
