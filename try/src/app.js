@@ -109,10 +109,14 @@ const shareButton = byId("share-button");
 const shareProgress = byId("share-progress");
 const rollNameInput = byId("roll-name");
 const zipLimitLabel = `${WEB_ZIP_LIMITS.maxZipBytes / (1024 * 1024)}MB`;
-const zipLimitLines = [
-  `체험판은 ${zipLimitLabel}까지만 받아요.`,
-  "앱에서는 현상소에서 받은 큰 ZIP도 그대로 넣을 수 있어요.",
-];
+const largeZipAppLine = "앱에서는 현상소에서 받은 큰 ZIP도 그대로 넣을 수 있어요.";
+function zipLimitLines(limit) {
+  if (limit === "photoEntryCount") {
+    return [`체험판은 사진 ${WEB_ZIP_LIMITS.maxEntryCount}장까지만 받아요.`, largeZipAppLine];
+  }
+  if (limit === "totalEntryCount") return [largeZipAppLine];
+  return [`체험판은 ${zipLimitLabel}까지만 받아요.`, largeZipAppLine];
+}
 byId("zip-limit-note").textContent = `체험판은 ${zipLimitLabel}까지 받아요`;
 
 function showScreen(name) {
@@ -121,9 +125,9 @@ function showScreen(name) {
   window.scrollTo(0, 0);
 }
 
-function setStatus(message, error = false, target = state.screen === "start" ? startStatus : exportStatus, errorKind = null) {
+function setStatus(message, error = false, target = state.screen === "start" ? startStatus : exportStatus, errorKind = null, errorLimit = null) {
   const isZipLimit = errorKind === ZIP_ERROR_KIND_LIMIT;
-  target.textContent = isZipLimit ? [message, ...zipLimitLines].join("\n") : message;
+  target.textContent = isZipLimit ? [message, ...zipLimitLines(errorLimit)].join("\n") : message;
   target.classList.toggle("error", error);
   target.classList.toggle("limit-error", isZipLimit);
 }
@@ -1203,7 +1207,7 @@ async function receiveZip(file, { askRollInfo = true } = {}) {
     state.photos = [];
     refreshItems();
     showScreen("start");
-    setStatus(error.message, true, startStatus, error.kind);
+    setStatus(error.message, true, startStatus, error.kind, error.limit);
     return false;
   }
 }
@@ -1440,7 +1444,14 @@ function renderResult() {
   updateShareAvailability();
 }
 
-zipInput.addEventListener("change", () => zipInput.files[0] && receiveZip(zipInput.files[0]));
+zipInput.addEventListener("change", async () => {
+  const file = zipInput.files[0] ?? null;
+  try {
+    if (file) await receiveZip(file);
+  } finally {
+    zipInput.value = "";
+  }
+});
 recordInput.addEventListener("change", () => recordInput.files[0] && receiveRecord(recordInput.files[0]));
 byId("shifted-demo").addEventListener("click", startHanriverExample);
 byId("record-import").addEventListener("click", () => recordInput.click());
