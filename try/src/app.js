@@ -58,16 +58,8 @@ const rollGroups = [
 
 const FRAME_NUMBER_INVALID = "1 이상의 프레임 번호를 입력해 주세요.";
 const FRAME_NUMBER_CONFLICT = "다른 컷과 번호가 겹쳐요. 다른 번호를 입력해 주세요.";
-
-function frameNumberInput(raw) {
-  const typed = String(raw ?? "");
-  const trimmed = typed.trim();
-  const value = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
-  if (!Number.isSafeInteger(value) || value < 1 || value > FRAME_NUMBER_MAXIMUM) {
-    return { value: null, message: `'컷 번호'에 숫자가 아닌 값이 있어요: '${typed}'. 고친 뒤 다시 저장해 주세요.` };
-  }
-  return { value, message: null };
-}
+const SHOOTING_DATE_HELPER = "2026-09-27처럼 입력해요. 스캔 파일의 날짜는 쓰지 않아요.";
+const SHOOTING_DATE_PLACEHOLDER = "2024-05-17";
 
 function framePositionsProblem(positions) {
   if (!positions) return FRAME_NUMBER_CONFLICT;
@@ -533,6 +525,8 @@ function renderRollInfo() {
   const unmatchedLine = unmatched.length ? `맞는 컷이 없는 기록: ${compactNumbers(unmatched)}번` : "";
   byId("record-unmatched").textContent = unmatchedLine;
   byId("record-unmatched").hidden = !unmatchedLine;
+  byId("record-unmatched-help").hidden = !unmatchedLine;
+  byId("record-unmatched-fix").hidden = !unmatchedLine;
   byId("example-record-import").hidden = !state.exampleActive;
 }
 
@@ -648,10 +642,14 @@ function renderFieldEditor() {
   byId("field-input-label").textContent = editing.label;
   const input = byId("field-input");
   input.value = editing.draft;
-  input.placeholder = editing.inherited || editing.field?.placeholder || "";
+  input.placeholder = isShootingDateEditor(editing)
+    ? SHOOTING_DATE_PLACEHOLDER
+    : editing.inherited || editing.field?.placeholder || "";
   input.inputMode = editing.inputMode ?? editing.field?.inputMode ?? (["focal", "frame"].includes(editing.key) ? "decimal" : "text");
   const helper = byId("field-helper");
-  helper.textContent = editing.scope === "meta" && editing.key === "frame" ? FRAME_NUMBER_HELPER : "";
+  helper.textContent = editing.scope === "meta" && editing.key === "frame"
+    ? FRAME_NUMBER_HELPER
+    : isShootingDateEditor(editing) ? SHOOTING_DATE_HELPER : "";
   helper.hidden = !helper.textContent;
   const choices = byId("field-choices");
   choices.replaceChildren();
@@ -693,6 +691,10 @@ function isShootingDateEditor(editing) {
   return editing?.key === "date" && (editing.scope === "meta" || editing.scope === "command");
 }
 
+function isRenumberStartEditor(editing) {
+  return editing?.scope === "command" && editing.key === "frame";
+}
+
 function shootingDateEditResult(raw) {
   const value = String(raw ?? "").trim();
   return { value, valid: value === "" || cleanShootingDate(value) === value };
@@ -710,6 +712,11 @@ function updateFieldMessage() {
       editing.currentFrame,
       new Set(currentPositions().map(({ frame }) => frame)),
     );
+    editing.validationMessage = frameNumberMessage(result.messageKey) ?? "";
+    editing.validationValue = value;
+    done.disabled = !result.completeEnabled;
+  } else if (isRenumberStartEditor(editing)) {
+    const result = evaluateFrameNumberEdit(value, 1, new Set());
     editing.validationMessage = frameNumberMessage(result.messageKey) ?? "";
     editing.validationValue = value;
     done.disabled = !result.completeEnabled;
@@ -1197,9 +1204,9 @@ function openBulkNumberMenu() {
     { label: "몇부터 다시 매기기", action: () => openCommandEditor({
       label: "컷 번호 다시 매기기", key: "frame", placeholder: "시작 번호", inputMode: "numeric",
       onApply: (value) => {
-        const parsed = frameNumberInput(value);
-        if (parsed.message) {
-          state.editing.validationMessage = parsed.message;
+        const parsed = evaluateFrameNumberEdit(value, 1, new Set());
+        if (!parsed.completeEnabled) {
+          state.editing.validationMessage = frameNumberMessage(parsed.messageKey) ?? "";
           state.editing.validationValue = value;
           updateFieldMessage();
           return false;
@@ -1241,7 +1248,7 @@ function openBulkDateEditor() {
   const selected = [...state.bulkSelection];
   openCommandEditor({
     label: selected.length > 1 ? `촬영일 지정 (컷 ${selected.length}개)` : "촬영일",
-    key: "date", placeholder: "YYYY-MM-DD", inputMode: "numeric",
+    key: "date", placeholder: SHOOTING_DATE_PLACEHOLDER, inputMode: "numeric",
     onApply: (value) => {
       for (const item of state.items.filter((candidate) => selected.includes(candidate.cutId))) {
         const meta = cutMeta(item);
@@ -1650,6 +1657,7 @@ for (const button of document.querySelectorAll("[data-open-roll-info]")) button.
 for (const button of document.querySelectorAll("[data-go-start]")) button.addEventListener("click", () => showScreen("start"));
 
 byId("roll-info-button").addEventListener("click", () => openRollInfo("roll"));
+byId("record-unmatched-fix").addEventListener("click", openBulkEdit);
 byId("roll-menu").addEventListener("click", () => showOptionDialog("롤 메뉴", [
   {
     label: "순서대로 번호 다시 매기기",

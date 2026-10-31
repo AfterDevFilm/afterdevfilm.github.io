@@ -753,6 +753,7 @@ h2 {
   font-size: 14px;
   line-height: 20px;
 }
+#field-helper { margin: 0 0 8px; }
 .choice-buttons {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -870,6 +871,8 @@ h2 {
 }
 .record-confirm-notices p { margin: 0; }
 .record-unmatched { margin: 8px 0 0; color: var(--warn); font-size: 15px; line-height: 22px; }
+.record-unmatched-help { margin: 4px 0 0; color: var(--ink-muted); font-size: 14px; line-height: 20px; }
+.record-unmatched-fix { min-height: 44px; padding: 4px 0; }
 .record-unread-lines {
   display: grid;
   gap: 4px;

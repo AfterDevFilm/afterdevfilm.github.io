@@ -42,7 +42,7 @@
         <p>그림풍 합성 36컷 ZIP과 두 장 밀린 촬영 기록으로 확인해요.</p>
         <button id="shifted-demo" class="secondary" type="button">번호가 밀린 롤로 해 보기</button>
       </section>
-      <p class="feedback-link"><a href="https://forms.gle/fPC8W1PEuGxw7V85A" target="_blank" rel="noopener noreferrer">써 보신 소감 남기기</a><a href="../support/">개발자 현상비 보태주기</a></p>
+      <p class="feedback-link"><a href="https://forms.gle/fPC8W1PEuGxw7V85A" target="_blank" rel="noopener noreferrer">써 보신 소감 남기기</a><a href="../support/" target="_blank" rel="noopener noreferrer">개발자 현상비 보태주기</a></p>
     </section>
 
     <section id="roll-screen" class="screen" data-screen="roll" hidden>
@@ -224,11 +224,11 @@
         </div>
       </header>
       <div class="field-editor-body">
+        <p id="field-helper" class="field-message" hidden></p>
         <label class="editor-field">
           <span class="visually-hidden" id="field-input-label">카메라</span>
           <input id="field-input" aria-labelledby="field-input-label" autocomplete="off">
         </label>
-        <p id="field-helper" class="field-message" hidden></p>
         <div id="field-choices" class="choice-buttons" hidden></div>
         <p id="field-message" class="field-message" hidden></p>
         <section id="recent-section" class="recent-section" hidden>
@@ -259,6 +259,8 @@
       </div>
       <p id="record-name" class="filename">촬영 기록 없이도 계속할 수 있어요.</p>
       <p id="record-unmatched" class="record-unmatched" hidden></p>
+      <p id="record-unmatched-help" class="record-unmatched-help" hidden>가져온 스캔 파일과 촬영 기록의 번호가 맞지 않아요. 필요하면 컷 번호를 조정해 주세요.</p>
+      <button id="record-unmatched-fix" class="text-button record-unmatched-fix" type="button" hidden>컷 번호 고치기</button>
       <div id="roll-info-groups"></div>
       <p id="roll-info-help" class="roll-info-help">롤 전체에 기본으로 적용돼요. 조리개·셔터·노출 보정은 컷마다 입력해요.</p>
       <div class="bottom-spacer"></div>
@@ -395,7 +397,7 @@
         </div>
         <p id="share-progress" class="quiet" role="status" hidden></p>
       </div>
-      <p class="feedback-link"><a href="https://forms.gle/fPC8W1PEuGxw7V85A" target="_blank" rel="noopener noreferrer">써 보신 소감 남기기</a><a href="../support/">개발자 현상비 보태주기</a></p>
+      <p class="feedback-link"><a href="https://forms.gle/fPC8W1PEuGxw7V85A" target="_blank" rel="noopener noreferrer">써 보신 소감 남기기</a><a href="../support/" target="_blank" rel="noopener noreferrer">개발자 현상비 보태주기</a></p>
       <div class="result-bottom-spacer"></div>
       <footer class="bottom-bar result-bottom-bar">
         <div class="result-actions">
