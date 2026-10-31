@@ -14,6 +14,7 @@ import {
   applyScanReplacement, stageScanReplacement,
 } from "./core/scan-replacement.js";
 import { normalizeBulb, sharedCopy, shouldShowExifReason } from "./core/value-rules.js";
+import { INTEGER_INPUT_LABELS, prepareIntegerFieldInput } from "./core/integer-input.js";
 import { inputSuggestionAsk } from "./core/input-suggestion.js";
 import {
   moveSelection, planBulkShootingInfo, renumberByOrder, renumberSelection, reverseSelection, selectionIsContiguous, shiftSelection,
@@ -22,6 +23,7 @@ import { contactSheetBlob, evaluateContactSheetLimit, renderContactSheet } from 
 import {
   TEMPLATE_ROLL_FIELDS, cutNameRejectedLine, rollMissingNumberLine, templateConfirmationNoticeLines, templateCutLine,
 } from "./core/template-import.js";
+import { SHOOTING_DATE_PROVENANCE, reprojectProviderShootingDates } from "./core/shooting-date-renumber.js";
 import {
   ThumbnailBitmapCache, makeThumbnailBitmap, renderCachedThumbnail,
 } from "./core/thumbnail-cache.js";
@@ -35,11 +37,11 @@ const shootingFields = [
   { key: "ev", label: "노출 보정", cutOnly: true },
   { key: "film", label: "필름", recent: true },
   { key: "maker", label: "필름 제조사", recent: true },
-  { key: "boxSpeed", label: "박스 감도", placeholder: "ISO 숫자만 입력" },
-  { key: "ei", label: "노출 지수(EI)" },
+  { key: "boxSpeed", label: "박스 감도", placeholder: "ISO 숫자만 입력", inputMode: "numeric" },
+  { key: "ei", label: "노출 지수(EI)", placeholder: "숫자만 입력", inputMode: "numeric" },
   { key: "process", label: "현상 방식", choices: ["C-41", "ECN-2", "E-6", "B&W"] },
   { key: "lab", label: "현상소", recent: true },
-  { key: "rollNumber", label: "롤 번호" },
+  { key: "rollNumber", label: "롤 번호", placeholder: "숫자만 입력", inputMode: "numeric" },
 ];
 
 const rollGroups = [
@@ -49,6 +51,28 @@ const rollGroups = [
   ["현상", ["process", "lab"]],
 ];
 
+const FRAME_NUMBER_MAXIMUM = 1_000_000_000;
+const FRAME_NUMBER_INVALID = "1 이상의 프레임 번호를 입력해 주세요.";
+const FRAME_NUMBER_CONFLICT = "다른 컷과 번호가 겹쳐요. 다른 번호를 입력해 주세요.";
+
+function frameNumberInput(raw) {
+  const typed = String(raw ?? "");
+  const trimmed = typed.trim();
+  const value = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (!Number.isSafeInteger(value) || value < 1 || value > FRAME_NUMBER_MAXIMUM) {
+    return { value: null, message: `'컷 번호'에 숫자가 아닌 값이 있어요: '${typed}'. 고친 뒤 다시 저장해 주세요.` };
+  }
+  return { value, message: null };
+}
+
+function framePositionsProblem(positions) {
+  if (!positions) return FRAME_NUMBER_CONFLICT;
+  const frames = positions.map(({ frame }) => frame);
+  if (frames.some((frame) => !Number.isSafeInteger(frame) || frame < 1 || frame > FRAME_NUMBER_MAXIMUM)) return FRAME_NUMBER_INVALID;
+  if (new Set(frames).size !== frames.length) return FRAME_NUMBER_CONFLICT;
+  return null;
+}
+
 const state = {
   photos: [], importFailures: [], records: [], cutValues: [], roll: {}, items: [], mode: null,
   screen: "start", returnScreen: "roll", presentation: "grid", columns: 2,
@@ -57,7 +81,7 @@ const state = {
   exportFormat: "jpeg", exportQuality: "high", exportDigits: 2, rollFrameLabel: false, rgbHistogram: false, paddingRatio: "original",
   exportSelection: new Set(), webpSupported: null, result: null,
   cutOrder: [], frameByCut: {}, bulkEditing: false, bulkSelection: new Set(), bulkDraft: {}, bulkAfterAction: false, bulkMessage: "",
-  contactFormat: "jpeg", contactQuality: "high", contactHeader: true, contactRender: null, contactFile: null,
+  contactFormat: "jpeg", contactQuality: "high", contactHeader: true, contactRender: null, contactFile: null, contactMessage: "",
   importedRollKeys: new Set(), pendingRecord: null, templateGuideSeen: false, bulkNoticeTimer: null,
   recordFileName: "", exampleActive: false, exampleRecordBytes: null,
   appPreviewAvailable: { album: false, webp: true, large: true, contact: true, "zip-backup": true },
@@ -411,11 +435,13 @@ function makeInfoRow({ label, value = "", source = "", action = "", emptyText = 
 
 function cutMeta(item) {
   if (!state.cutMeta[item.cutId]) {
+    const providerAttached = Boolean(state.recordFileName);
     state.cutMeta[item.cutId] = {
       name: item.importedRecord?.cutName ?? "",
       date: item.importedRecord?.date ?? "",
       nameSource: item.importedRecord?.cutName ? "가져온 기록" : "",
       dateSource: item.importedRecord?.date ? "가져온 기록" : "",
+      dateProvenance: providerAttached ? SHOOTING_DATE_PROVENANCE.provider : SHOOTING_DATE_PROVENANCE.none,
     };
   }
   return state.cutMeta[item.cutId];
@@ -616,7 +642,7 @@ function renderFieldEditor() {
   const input = byId("field-input");
   input.value = editing.draft;
   input.placeholder = editing.inherited || editing.field?.placeholder || "";
-  input.inputMode = editing.inputMode ?? (["focal", "boxSpeed", "frame"].includes(editing.key) ? "decimal" : "text");
+  input.inputMode = editing.inputMode ?? editing.field?.inputMode ?? (["focal", "frame"].includes(editing.key) ? "decimal" : "text");
   const choices = byId("field-choices");
   choices.replaceChildren();
   for (const choice of editing.field?.choices ?? []) {
@@ -658,6 +684,14 @@ function updateFieldMessage() {
   const message = byId("field-message");
   const value = byId("field-input").value;
   editing.draft = value;
+  if (editing.validationValue !== value) editing.validationMessage = "";
+  if (editing.validationMessage) {
+    message.textContent = editing.validationMessage;
+    message.classList.add("error-text");
+    message.hidden = false;
+    return;
+  }
+  message.classList.remove("error-text");
   const reason = editing.field?.reason;
   if (reason && shouldShowExifReason(reason, value)) {
     message.textContent = sharedCopy("reason_text").text_ios;
@@ -703,15 +737,35 @@ function applySuggestedValues(target, suggestion) {
 function applyFieldValue(value, extra = null) {
   const editing = state.editing;
   if (editing.scope === "command") {
-    editing.onApply(value.trim());
+    if (editing.onApply(value.trim()) === false) return;
   } else if (editing.scope === "meta") {
     const item = state.items[state.currentCut];
     const meta = cutMeta(item);
     if (editing.key === "name" || editing.key === "date") {
       meta[editing.key] = value.trim();
       meta[`${editing.key}Source`] = value.trim() ? "이 컷에만 입력" : "";
+      if (editing.key === "date") meta.dateProvenance = value.trim()
+        ? SHOOTING_DATE_PROVENANCE.user : SHOOTING_DATE_PROVENANCE.deleted;
     }
-    if (editing.key === "frame" && /^\d+$/.test(value.trim())) meta.frame = value.trim();
+    if (editing.key === "frame") {
+      const parsed = frameNumberInput(value);
+      if (parsed.message) {
+        editing.validationMessage = parsed.message;
+        editing.validationValue = value;
+        updateFieldMessage();
+        return;
+      }
+      const positions = currentPositions().map((position) => position.cut === item.cutId
+        ? { ...position, frame: parsed.value } : position);
+      const problem = framePositionsProblem(positions);
+      if (problem) {
+        editing.validationMessage = problem;
+        editing.validationValue = value;
+        updateFieldMessage();
+        return;
+      }
+      applyBulkPositions(positions);
+    }
   } else if (editing.scope === "roll") {
     if (value.trim()) state.roll[editing.key] = value;
     else delete state.roll[editing.key];
@@ -746,6 +800,16 @@ function finishFieldEdit(fromRecent = false) {
   const editing = state.editing;
   if (!editing) return;
   editing.draft = byId("field-input").value;
+  if (editing.scope !== "command" && editing.scope !== "meta" && INTEGER_INPUT_LABELS[editing.key]) {
+    const prepared = prepareIntegerFieldInput(editing.key, editing.draft, editing.original ?? "");
+    if (!prepared.accepted) {
+      editing.validationMessage = prepared.message;
+      editing.validationValue = editing.draft;
+      updateFieldMessage();
+      return;
+    }
+    editing.draft = prepared.value;
+  }
   const bulb = editing.key === "sh" ? normalizeBulb(editing.draft) : null;
   if (bulb && bulb !== editing.draft.trim()) {
     showDialog({
@@ -847,11 +911,20 @@ function showBulkNotice(message) {
   byId("bulk-result").textContent = message;
   byId("bulk-result").hidden = !message;
   if (!message) return;
+  placeBulkNoticeAboveActions();
   state.bulkNoticeTimer = window.setTimeout(() => {
     state.bulkMessage = "";
     byId("bulk-result").hidden = true;
     state.bulkNoticeTimer = null;
   }, 4000);
+}
+
+function placeBulkNoticeAboveActions() {
+  const notice = byId("bulk-result");
+  const screen = document.querySelector('[data-screen]:not([hidden])');
+  const actions = screen?.querySelector(".bottom-bar");
+  const bottom = actions ? Math.max(8, window.innerHeight - actions.getBoundingClientRect().top + 8) : 8;
+  notice.style.bottom = `${Math.round(bottom)}px`;
 }
 
 async function renderPreview() {
@@ -1012,15 +1085,36 @@ function openBulkEdit() {
 }
 
 function applyBulkPositions(positions) {
-  if (!positions) return;
-  const frames = positions.map(({ frame }) => frame);
-  if (frames.some((frame) => !Number.isInteger(frame) || frame < 1) || new Set(frames).size !== frames.length) return;
+  const problem = framePositionsProblem(positions);
+  if (problem) {
+    showBulkNotice(problem);
+    return false;
+  }
   state.cutOrder = positions.map(({ cut }) => cut);
   state.frameByCut = Object.fromEntries(positions.map(({ cut, frame }) => [cut, frame]));
+  refreshItems();
+  reprojectTemplateDates();
   state.bulkAfterAction = true;
   state.bulkMessage = "";
   invalidateShareSession();
   renderRoll();
+  return true;
+}
+
+function reprojectTemplateDates() {
+  const projected = reprojectProviderShootingDates(
+    state.items.map((item) => {
+      const meta = cutMeta(item);
+      return { cutId: item.cutId, frame: item.frame, date: meta.date, dateProvenance: meta.dateProvenance };
+    }),
+    state.records.map((record) => ({ frame: record.n, date: record.date ?? "" })),
+  );
+  for (const result of projected) {
+    const meta = state.cutMeta[result.cutId];
+    if (meta?.dateProvenance !== SHOOTING_DATE_PROVENANCE.provider) continue;
+    meta.date = result.date;
+    meta.dateSource = result.date ? "가져온 기록" : "";
+  }
 }
 
 function rotateBulk(kind) {
@@ -1052,8 +1146,22 @@ function openBulkNumberMenu() {
     { label: "몇부터 다시 매기기", action: () => openCommandEditor({
       label: "컷 번호 다시 매기기", key: "frame", placeholder: "시작 번호", inputMode: "numeric",
       onApply: (value) => {
-        const start = Number(value);
-        if (Number.isInteger(start) && start >= 1) applyBulkPositions(renumberSelection(currentPositions(), selected, start));
+        const parsed = frameNumberInput(value);
+        if (parsed.message) {
+          state.editing.validationMessage = parsed.message;
+          state.editing.validationValue = value;
+          updateFieldMessage();
+          return false;
+        }
+        const positions = renumberSelection(currentPositions(), selected, parsed.value);
+        const problem = framePositionsProblem(positions);
+        if (problem) {
+          state.editing.validationMessage = problem;
+          state.editing.validationValue = value;
+          updateFieldMessage();
+          return false;
+        }
+        return applyBulkPositions(positions);
       },
     }) },
   ]);
@@ -1083,7 +1191,12 @@ function openBulkDateEditor() {
     label: selected.length > 1 ? `촬영일 지정 (컷 ${selected.length}개)` : "촬영일",
     key: "date", placeholder: "YYYY-MM-DD", inputMode: "numeric",
     onApply: (value) => {
-      for (const item of state.items.filter((candidate) => selected.includes(candidate.cutId))) cutMeta(item).date = value;
+      for (const item of state.items.filter((candidate) => selected.includes(candidate.cutId))) {
+        const meta = cutMeta(item);
+        meta.date = value;
+        meta.dateSource = value ? "이 컷에만 입력" : "";
+        meta.dateProvenance = value ? SHOOTING_DATE_PROVENANCE.user : SHOOTING_DATE_PROVENANCE.deleted;
+      }
       state.bulkAfterAction = true;
       state.bulkMessage = "";
     },
@@ -1102,6 +1215,9 @@ function contactHeaderParts() {
 
 async function renderContact() {
   const token = ++state.previewToken;
+  state.contactRender = null;
+  state.contactFile = null;
+  updateContactControls();
   refreshItems();
   byId("contact-roll-name").textContent = rollNameInput.value.trim() || defaultRollName();
   byId("contact-loading").hidden = false;
@@ -1128,8 +1244,7 @@ async function renderContact() {
   canvas.getContext("2d").drawImage(result.canvas, 0, 0);
   canvas.hidden = false;
   byId("contact-loading").hidden = true;
-  state.contactFile = null;
-  byId("contact-result").textContent = "";
+  byId("contact-result").textContent = state.contactMessage;
   updateContactControls();
 }
 
@@ -1143,6 +1258,11 @@ function updateContactControls() {
   byId("contact-share").disabled = disabled;
 }
 
+function setContactResult(message) {
+  state.contactMessage = message;
+  byId("contact-result").textContent = message;
+}
+
 async function makeContactFile(download = false) {
   if (!state.contactRender?.canvas) return null;
   const started = performance.now();
@@ -1154,7 +1274,7 @@ async function makeContactFile(download = false) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   if (download) downloadBytes(bytes, name, blob.type);
   state.contactFile = { blob, name, elapsedMs };
-  byId("contact-result").textContent = state.exampleActive ? `웹 모아 보기 · ${name}` : `웹 모아 보기 · ${(elapsedMs / 1000).toFixed(2)}초 · ${name}`;
+  setContactResult(state.exampleActive ? `웹 모아 보기 · ${name}` : `웹 모아 보기 · ${(elapsedMs / 1000).toFixed(2)}초 · ${name}`);
   return state.contactFile;
 }
 
@@ -1163,6 +1283,7 @@ async function openContactSheet() {
   state.contactQuality = "high";
   state.contactHeader = true;
   state.contactFile = null;
+  setContactResult("");
   showScreen("contact");
   probeWebpSupport();
   await renderContact();
@@ -1309,11 +1430,9 @@ function confirmRecordImport() {
       meta.name = item.importedRecord.cutName;
       meta.nameSource = "가져온 기록";
     }
-    if (item.importedRecord?.date && !meta.date) {
-      meta.date = item.importedRecord.date;
-      meta.dateSource = "가져온 기록";
-    }
+    if (meta.dateProvenance === SHOOTING_DATE_PROVENANCE.none) meta.dateProvenance = SHOOTING_DATE_PROVENANCE.provider;
   }
+  reprojectTemplateDates();
   invalidateShareSession();
   byId("record-name").textContent = `${fileName} · ${parsed.cuts.length}컷을 읽었어요.`;
   byId("record-name").classList.remove("error-text");
@@ -1404,10 +1523,7 @@ function releaseResult(result) {
 
 function renderResult() {
   const result = state.result;
-  const delivered = result.delivery === "share" ? result.shared : result.files.length;
-  byId("result-title").textContent = result.delivery === "share"
-    ? `사진 ${delivered}장을 공유 창으로 보냈어요.`
-    : `사진 ${delivered}장을 내려받았어요.`;
+  byId("result-title").textContent = `사진 ${result.files.length}장을 내려받았어요.`;
   // Measured time only for the user's own ZIP; a built-in example says nothing about their device.
   byId("export-elapsed").hidden = state.exampleActive;
   byId("export-elapsed").textContent = state.exampleActive ? "" : `롤 전체 내보내기 · ${(result.elapsedMs / 1000).toFixed(2)}초`;
@@ -1629,7 +1745,7 @@ for (const button of document.querySelectorAll("[data-contact-quality]")) {
 }
 byId("contact-header-enabled").addEventListener("change", async (event) => { state.contactHeader = event.target.checked; await renderContact(); });
 byId("contact-save").addEventListener("click", async () => {
-  try { await makeContactFile(true); } catch (error) { byId("contact-result").textContent = error.message; }
+  try { await makeContactFile(true); } catch (error) { setContactResult(error.message); }
 });
 byId("contact-share").addEventListener("click", async () => {
   try {
@@ -1637,8 +1753,10 @@ byId("contact-share").addEventListener("click", async () => {
     const file = new File([result.blob], result.name, { type: result.blob.type });
     if (!navigator.canShare?.({ files: [file] })) throw new Error("이 브라우저에서는 모아 보기 파일을 공유할 수 없어요. 이미지로 저장해 주세요.");
     await navigator.share({ files: [file] });
+    setContactResult("");
+    showBulkNotice("사진 1장을 보냈어요.");
   } catch (error) {
-    byId("contact-result").textContent = error.name === "AbortError" ? "공유를 취소했어요." : error.message;
+    setContactResult(error.name === "AbortError" ? "공유를 취소했어요." : error.message);
   }
 });
 for (const button of document.querySelectorAll("[data-quality]")) {
@@ -1720,7 +1838,7 @@ shareButton.addEventListener("click", async () => {
     session.shared += files.length;
     state.result.delivery = "share";
     state.result.shared = session.shared;
-    byId("result-title").textContent = `사진 ${session.shared}장을 공유 창으로 보냈어요.`;
+    showBulkNotice(`사진 ${session.shared}장을 보냈어요.`);
     const progress = `${session.total}장 중 ${session.shared}장을 넘겼어요.`;
     shareProgress.textContent = progress;
     shareProgress.hidden = false;

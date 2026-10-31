@@ -1,5 +1,6 @@
 import { cleanExposureRational } from "./value-rules.js";
 import { TEMPLATE_CONFIRMATION_KIND } from "./template-import.js";
+import { rollNumberProposal } from "./integer-input.js";
 
 export const MAX_TEMPLATE_PHYSICAL_LINES = 1000;
 export const TEMPLATE_RECORD_TOO_LARGE = "TOO_LARGE";
@@ -356,6 +357,16 @@ export function parseMarkdownRecord(text) {
   const unknownColumns = [];
 
   function addCandidate(field, value, lineNumber) {
+    if (field === "rollNumber") {
+      const clean = parseQuoted(value);
+      const proposal = rollNumberProposal(clean);
+      if (proposal.memo) unread.add(lineNumber);
+      if (proposal.value === null) return;
+      if (proposal.confirmation) addConfirmation(confirmations, lineNumber, TEMPLATE_CONFIRMATION_KIND.ambiguousValue, field, clean);
+      if (!candidates.has(field)) candidates.set(field, []);
+      candidates.get(field).push({ value: proposal.value, line: lineNumber });
+      return;
+    }
     const clean = usableRollValue(field, value);
     if (!clean) {
       if (String(value).trim()) {
@@ -520,8 +531,13 @@ export function parseCsvRecord(text, papa = globalThis.Papa) {
     const row = rows[index];
     if (row.every((cell) => !cell.trim())) continue;
     const key = canonicalRollKey(row[0]);
-    const value = key ? usableRollValue(key, row[1] ?? "") : null;
-    if (key && value) roll[key] = value;
+    const rawValue = row[1] ?? "";
+    const proposal = key === "rollNumber" ? rollNumberProposal(parseQuoted(rawValue)) : null;
+    const value = key === "rollNumber" ? proposal.value : key ? usableRollValue(key, rawValue) : null;
+    if (key && value) {
+      roll[key] = value;
+      if (proposal?.confirmation) addConfirmation(confirmations, index + 1, TEMPLATE_CONFIRMATION_KIND.ambiguousValue, key, parseQuoted(rawValue));
+    } else if (key === "rollNumber" && proposal && !proposal.memo) continue;
     else {
       unread.push(index + 1);
       unreadRaw.push(row.join(","));
