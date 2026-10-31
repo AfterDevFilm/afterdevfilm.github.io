@@ -27,6 +27,9 @@ import { SHOOTING_DATE_PROVENANCE, reprojectProviderShootingDates } from "./core
 import {
   ThumbnailBitmapCache, makeThumbnailBitmap, renderCachedThumbnail,
 } from "./core/thumbnail-cache.js";
+import {
+  FRAME_NUMBER_HELPER, FRAME_NUMBER_MAXIMUM, evaluateFrameNumberEdit, frameNumberMessage,
+} from "./core/frame-number-edit.js";
 
 const shootingFields = [
   { key: "camera", label: "카메라", recent: true, placeholder: "예: Nikon FM2" },
@@ -51,7 +54,6 @@ const rollGroups = [
   ["현상", ["process", "lab"]],
 ];
 
-const FRAME_NUMBER_MAXIMUM = 1_000_000_000;
 const FRAME_NUMBER_INVALID = "1 이상의 프레임 번호를 입력해 주세요.";
 const FRAME_NUMBER_CONFLICT = "다른 컷과 번호가 겹쳐요. 다른 번호를 입력해 주세요.";
 
@@ -542,7 +544,10 @@ function openRollInfo(returnScreen = state.screen) {
 function openMetaEditor(key, label) {
   const item = state.items[state.currentCut];
   const meta = cutMeta(item);
-  state.editing = { scope: "meta", key, label, returnScreen: "cut", draft: key === "frame" ? String(item.frame) : meta[key] ?? "" };
+  state.editing = {
+    scope: "meta", key, label, returnScreen: "cut", draft: key === "frame" ? String(item.frame) : meta[key] ?? "",
+    currentFrame: key === "frame" ? item.frame : null,
+  };
   renderFieldEditor();
   showScreen("field");
 }
@@ -643,6 +648,9 @@ function renderFieldEditor() {
   input.value = editing.draft;
   input.placeholder = editing.inherited || editing.field?.placeholder || "";
   input.inputMode = editing.inputMode ?? editing.field?.inputMode ?? (["focal", "frame"].includes(editing.key) ? "decimal" : "text");
+  const helper = byId("field-helper");
+  helper.textContent = editing.scope === "meta" && editing.key === "frame" ? FRAME_NUMBER_HELPER : "";
+  helper.hidden = !helper.textContent;
   const choices = byId("field-choices");
   choices.replaceChildren();
   for (const choice of editing.field?.choices ?? []) {
@@ -684,6 +692,19 @@ function updateFieldMessage() {
   const message = byId("field-message");
   const value = byId("field-input").value;
   editing.draft = value;
+  const done = byId("field-done");
+  if (editing.scope === "meta" && editing.key === "frame") {
+    const result = evaluateFrameNumberEdit(
+      value,
+      editing.currentFrame,
+      new Set(currentPositions().map(({ frame }) => frame)),
+    );
+    editing.validationMessage = frameNumberMessage(result.messageKey) ?? "";
+    editing.validationValue = value;
+    done.disabled = !result.completeEnabled;
+  } else {
+    done.disabled = false;
+  }
   if (editing.validationValue !== value) editing.validationMessage = "";
   if (editing.validationMessage) {
     message.textContent = editing.validationMessage;
@@ -748,15 +769,19 @@ function applyFieldValue(value, extra = null) {
         ? SHOOTING_DATE_PROVENANCE.user : SHOOTING_DATE_PROVENANCE.deleted;
     }
     if (editing.key === "frame") {
-      const parsed = frameNumberInput(value);
-      if (parsed.message) {
-        editing.validationMessage = parsed.message;
+      const result = evaluateFrameNumberEdit(
+        value,
+        editing.currentFrame,
+        new Set(currentPositions().map(({ frame }) => frame)),
+      );
+      if (!result.completeEnabled) {
+        editing.validationMessage = frameNumberMessage(result.messageKey) ?? "";
         editing.validationValue = value;
         updateFieldMessage();
         return;
       }
       const positions = currentPositions().map((position) => position.cut === item.cutId
-        ? { ...position, frame: parsed.value } : position);
+        ? { ...position, frame: result.value } : position);
       const problem = framePositionsProblem(positions);
       if (problem) {
         editing.validationMessage = problem;
