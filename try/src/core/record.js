@@ -174,7 +174,7 @@ function cleanExposureCompensation(raw) {
   return /^[+-]\d+(?:\.\d+)?$/.test(value) ? value : null;
 }
 
-function cleanShootingDate(raw) {
+export function cleanShootingDate(raw) {
   const value = stripMarkup(raw);
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;

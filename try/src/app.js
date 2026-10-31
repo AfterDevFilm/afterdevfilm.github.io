@@ -1,5 +1,5 @@
 import { readPhotoZipBlob, zipLimitMessageLines, WEB_ZIP_LIMITS, ZIP_ERROR_KIND_LIMIT } from "./adapters/zip.js";
-import { parseCsvRecord, parseMarkdownRecord, recordUnreadEntries, unknownColumnsLine } from "./core/record.js";
+import { cleanShootingDate, parseCsvRecord, parseMarkdownRecord, recordUnreadEntries, unknownColumnsLine } from "./core/record.js";
 import { matchCutsToPhotos } from "./core/match.js";
 import { applyPaddingRatioCanvas, downloadBytes, exportConfiguredZip } from "./core/export.js";
 import { compactNumbers, groupExcludedLines, makeExportArchiveFilename } from "./core/export-rules.js";
@@ -30,6 +30,8 @@ import {
 import {
   FRAME_NUMBER_HELPER, FRAME_NUMBER_MAXIMUM, evaluateFrameNumberEdit, frameNumberMessage,
 } from "./core/frame-number-edit.js";
+
+const SHOOTING_DATE_INVALID_MESSAGE = "2026-09-27처럼 올바른 날짜를 입력해 주세요.";
 
 const shootingFields = [
   { key: "camera", label: "카메라", recent: true, placeholder: "예: Nikon FM2" },
@@ -687,6 +689,15 @@ function renderRecentValues() {
   section.hidden = root.childElementCount === 0;
 }
 
+function isShootingDateEditor(editing) {
+  return editing?.key === "date" && (editing.scope === "meta" || editing.scope === "command");
+}
+
+function shootingDateEditResult(raw) {
+  const value = String(raw ?? "").trim();
+  return { value, valid: value === "" || cleanShootingDate(value) === value };
+}
+
 function updateFieldMessage() {
   const editing = state.editing;
   const message = byId("field-message");
@@ -702,6 +713,11 @@ function updateFieldMessage() {
     editing.validationMessage = frameNumberMessage(result.messageKey) ?? "";
     editing.validationValue = value;
     done.disabled = !result.completeEnabled;
+  } else if (isShootingDateEditor(editing)) {
+    const result = shootingDateEditResult(value);
+    editing.validationMessage = result.valid ? "" : SHOOTING_DATE_INVALID_MESSAGE;
+    editing.validationValue = value;
+    done.disabled = !result.valid;
   } else {
     done.disabled = false;
   }
@@ -757,6 +773,16 @@ function applySuggestedValues(target, suggestion) {
 
 function applyFieldValue(value, extra = null) {
   const editing = state.editing;
+  if (isShootingDateEditor(editing)) {
+    const result = shootingDateEditResult(value);
+    if (!result.valid) {
+      editing.validationMessage = SHOOTING_DATE_INVALID_MESSAGE;
+      editing.validationValue = value;
+      updateFieldMessage();
+      return;
+    }
+    value = result.value;
+  }
   if (editing.scope === "command") {
     if (editing.onApply(value.trim()) === false) return;
   } else if (editing.scope === "meta") {
