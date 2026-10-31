@@ -1,4 +1,4 @@
-import { readPhotoZipBlob, WEB_ZIP_LIMITS, ZIP_ERROR_KIND_LIMIT } from "./adapters/zip.js";
+import { readPhotoZipBlob, zipLimitMessageLines, WEB_ZIP_LIMITS, ZIP_ERROR_KIND_LIMIT } from "./adapters/zip.js";
 import { parseCsvRecord, parseMarkdownRecord, recordUnreadEntries, unknownColumnsLine } from "./core/record.js";
 import { matchCutsToPhotos } from "./core/match.js";
 import { applyPaddingRatioCanvas, downloadBytes, exportConfiguredZip } from "./core/export.js";
@@ -111,13 +111,9 @@ const rollNameInput = byId("roll-name");
 const zipLimitLabel = `${WEB_ZIP_LIMITS.maxZipBytes / (1024 * 1024)}MB`;
 const largeZipAppLine = "앱에서는 현상소에서 받은 큰 ZIP도 그대로 넣을 수 있어요.";
 function zipLimitLines(limit) {
-  if (limit === "photoEntryCount") {
-    return [`체험판은 사진 ${WEB_ZIP_LIMITS.maxEntryCount}장까지만 받아요.`, largeZipAppLine];
-  }
-  if (limit === "totalEntryCount") return [largeZipAppLine];
-  return [`체험판은 ${zipLimitLabel}까지만 받아요.`, largeZipAppLine];
+  return [...zipLimitMessageLines(limit).slice(1), largeZipAppLine];
 }
-byId("zip-limit-note").textContent = `체험판은 ${zipLimitLabel}까지 받아요`;
+byId("zip-limit-note").textContent = `체험판은 ${zipLimitLabel}·사진 ${WEB_ZIP_LIMITS.maxEntryCount}장까지 받아요`;
 
 function showScreen(name) {
   state.screen = name;

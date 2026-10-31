@@ -5,6 +5,8 @@ import { judgeJpegCompleteness } from "../core/jpeg-completeness.js";
 const MIB = 1024 * 1024;
 const ZIP_INPUT_CHUNK_BYTES = 64 * 1024;
 const LIMIT_MESSAGE = "파일이 너무 커서 가져오지 않았어요.";
+const SINGLE_PHOTO_LIMIT_MESSAGE = "사진 한 장이 너무 커서 가져오지 않았어요.";
+const TOTAL_PHOTO_BYTES_LIMIT_MESSAGE = "사진을 모두 풀면 너무 커서 가져오지 않았어요.";
 const PHOTO_COUNT_LIMIT_MESSAGE = "사진이 너무 많아서 가져오지 않았어요.";
 const TOTAL_ENTRY_COUNT_LIMIT_MESSAGE = "ZIP 안에 파일이 너무 많아서 가져오지 않았어요.";
 const PHOTO_NAME = /\.(?:jpe?g|png)$/i;
@@ -42,12 +44,23 @@ function zipLimits(overrides = {}) {
   return { ...WEB_ZIP_LIMITS, ...overrides };
 }
 
+export function zipLimitMessageLines(limit) {
+  const mib = (bytes) => bytes / MIB;
+  if (limit === "photoEntryCount") {
+    return [PHOTO_COUNT_LIMIT_MESSAGE, `체험판은 사진 ${WEB_ZIP_LIMITS.maxEntryCount}장까지만 받아요.`];
+  }
+  if (limit === "totalEntryCount") return [TOTAL_ENTRY_COUNT_LIMIT_MESSAGE];
+  if (limit === "singleEntryUncompressedBytes") {
+    return [SINGLE_PHOTO_LIMIT_MESSAGE, `체험판은 사진 한 장 ${mib(WEB_ZIP_LIMITS.maxSingleEntryUncompressedBytes)}MB까지만 받아요.`];
+  }
+  if (limit === "totalUncompressedBytes") {
+    return [TOTAL_PHOTO_BYTES_LIMIT_MESSAGE, `체험판은 풀었을 때 ${mib(WEB_ZIP_LIMITS.maxTotalUncompressedBytes)}MB까지만 받아요.`];
+  }
+  return [LIMIT_MESSAGE, `체험판은 ${mib(WEB_ZIP_LIMITS.maxZipBytes)}MB까지만 받아요.`];
+}
+
 function tooLarge(limit) {
-  const message = {
-    photoEntryCount: PHOTO_COUNT_LIMIT_MESSAGE,
-    totalEntryCount: TOTAL_ENTRY_COUNT_LIMIT_MESSAGE,
-  }[limit] ?? LIMIT_MESSAGE;
-  const error = new Error(message);
+  const error = new Error(zipLimitMessageLines(limit)[0]);
   error.kind = ZIP_ERROR_KIND_LIMIT;
   error.limit = limit;
   return error;
@@ -114,11 +127,15 @@ function decodeZipEntryName(rawName, utf8Flag) {
   return { name: name.normalize("NFC"), falseUtf8Flag };
 }
 
-function isSafeZipPathBytes(rawName) {
-  if (!rawName.length || rawName.includes(0)) return false;
-  if (rawName[0] === 0x2f || rawName[0] === 0x5c) return false;
-  if (rawName.length >= 2 && ((rawName[0] >= 0x41 && rawName[0] <= 0x5a) || (rawName[0] >= 0x61 && rawName[0] <= 0x7a)) && rawName[1] === 0x3a) return false;
-  return !splitRawName(rawName).some((part) => part.length === 2 && part[0] === 0x2e && part[1] === 0x2e);
+function zipPathFacts(rawName) {
+  const driveLetter = rawName.length >= 3
+    && ((rawName[0] >= 0x41 && rawName[0] <= 0x5a) || (rawName[0] >= 0x61 && rawName[0] <= 0x7a))
+    && rawName[1] === 0x3a && (rawName[2] === 0x2f || rawName[2] === 0x5c);
+  return {
+    invalid: !rawName.length || rawName.includes(0),
+    absolute: rawName[0] === 0x2f || rawName[0] === 0x5c || driveLetter,
+    traversal: splitRawName(rawName).some((part) => part.length === 2 && part[0] === 0x2e && part[1] === 0x2e),
+  };
 }
 
 function rawNameKey(rawName, utf8Flag) {
@@ -180,10 +197,12 @@ function centralEntries(bytes, limits, base = 0) {
     const rawName = bytes.slice(offset + 46, offset + 46 + nameLength);
     const utf8Flag = (flags & 0x0800) !== 0;
     const decoded = decodeZipEntryName(rawName, utf8Flag);
-    const photoCandidate = !decoded.falseUtf8Flag && isImportCandidateName(decoded.name) && PHOTO_NAME.test(decoded.name);
+    const path = zipPathFacts(rawName);
+    const photoCandidate = !decoded.falseUtf8Flag && !path.invalid && !path.absolute && !path.traversal
+      && isImportCandidateName(decoded.name) && PHOTO_NAME.test(decoded.name);
     entries.push({
       name: decoded.name, rawName, utf8Flag, falseUtf8Flag: decoded.falseUtf8Flag,
-      flags, compression, crc32, compressedSize, size, photoCandidate,
+      flags, compression, crc32, compressedSize, size, photoCandidate, ...path,
     });
     if (photoCandidate) {
       candidateCount += 1;
@@ -201,7 +220,7 @@ function centralEntries(bytes, limits, base = 0) {
 
 export function isSafeZipPath(name) {
   const normalized = String(name).replace(/\\/g, "/");
-  if (!normalized || normalized.includes("\0") || normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized)) return false;
+  if (!normalized || normalized.includes("\0") || normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized)) return false;
   return !normalized.split("/").some((part) => part === "..");
 }
 
@@ -210,8 +229,9 @@ function inspectZipRecords(bytes, overrides, base = 0, total = bytes.length) {
   if (total > limits.maxZipBytes) throw tooLarge("zipBytes");
   const inspected = centralEntries(bytes, limits, base);
   for (const entry of inspected.entries) {
+    if (entry.invalid || entry.traversal) throw new Error("폴더 밖을 가리키는 ZIP 경로가 있어요.");
+    if (entry.absolute) continue;
     if ((entry.flags & 1) !== 0) throw new Error("암호가 걸린 ZIP은 열 수 없어요.");
-    if (!isSafeZipPathBytes(entry.rawName)) throw new Error("폴더 밖을 가리키는 ZIP 경로가 있어요.");
   }
   return { ...inspected, limits };
 }
@@ -244,7 +264,7 @@ function photoExtractor(inspected) {
   const declared = new Map();
   const failures = [];
   for (const entry of inspected.entries) {
-    if (entry.falseUtf8Flag || !isImportCandidateName(entry.name)) continue;
+    if (entry.absolute || entry.falseUtf8Flag || !isImportCandidateName(entry.name)) continue;
     const supportedCompression = entry.compression === 0 || entry.compression === 8;
     const keepPhoto = PHOTO_NAME.test(entry.name);
     if (!keepPhoto && (!supportedCompression || entry.size > inspected.limits.maxSingleEntryUncompressedBytes)) continue;
