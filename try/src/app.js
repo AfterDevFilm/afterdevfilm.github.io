@@ -1228,6 +1228,7 @@ function openBulkMoveMenu() {
       onApply: (value) => {
         const target = currentPositions().find(({ frame }) => frame === Number(value));
         if (!target) return;
+        if (state.bulkSelection.has(target.cut)) return;
         const remaining = currentPositions().filter(({ cut }) => !state.bulkSelection.has(cut));
         const destination = remaining.findIndex(({ cut }) => cut === target.cut);
         applyBulkPositions(moveSelection(currentPositions(), selected, destination + 1));
