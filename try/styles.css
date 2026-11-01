@@ -536,7 +536,8 @@ h2 {
 }
 .bulk-terminal-actions {
   display: grid;
-  grid-template-columns: minmax(112px, 0.5fr) minmax(0, 1fr);
+  /* q347 (RULE-UI-0112, owner choice 2026-11-01 "같은 폭"): 끝내기 | 내보내기 take half each, like the apps */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
   margin-top: 8px;
 }
@@ -558,7 +559,8 @@ h2 {
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--surface);
-  box-shadow: 0 8px 24px rgb(41 52 45 / 20%);
+  /* q347 (RULE-UI-0112, owner choice 2026-11-01 "세 곳 같게"): white card, 1px line, no shadow — the same menu on all three */
+  box-shadow: none;
 }
 .bulk-number-menu hr {
   width: 100%;
