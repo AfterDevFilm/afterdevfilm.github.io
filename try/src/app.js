@@ -32,6 +32,8 @@ import {
 } from "./core/frame-number-edit.js";
 
 const SHOOTING_DATE_INVALID_MESSAGE = "2026-09-27처럼 올바른 날짜를 입력해 주세요.";
+const SHOOTING_DATE_HELPER = "2026-09-27처럼 입력해요. 스캔 파일의 날짜는 쓰지 않아요.";
+const SHOOTING_DATE_PLACEHOLDER = "2024-05-17";
 
 const shootingFields = [
   { key: "camera", label: "카메라", recent: true, placeholder: "예: Nikon FM2" },
@@ -48,6 +50,10 @@ const shootingFields = [
   { key: "lab", label: "현상소", recent: true },
   { key: "rollNumber", label: "롤 번호", placeholder: "숫자만 입력", inputMode: "numeric" },
 ];
+const bulkShootingFields = [
+  { key: "date", label: "촬영일", placeholder: SHOOTING_DATE_PLACEHOLDER, inputMode: "numeric" },
+  ...shootingFields,
+];
 
 const rollGroups = [
   ["", ["rollNumber"]],
@@ -58,8 +64,6 @@ const rollGroups = [
 
 const FRAME_NUMBER_INVALID = "1 이상의 프레임 번호를 입력해 주세요.";
 const FRAME_NUMBER_CONFLICT = "다른 컷과 번호가 겹쳐요. 다른 번호를 입력해 주세요.";
-const SHOOTING_DATE_HELPER = "2026-09-27처럼 입력해요. 스캔 파일의 날짜는 쓰지 않아요.";
-const SHOOTING_DATE_PLACEHOLDER = "2024-05-17";
 
 function framePositionsProblem(positions) {
   if (!positions) return FRAME_NUMBER_CONFLICT;
@@ -264,6 +268,7 @@ async function renderPhoto(container, item, maximum, token, label) {
 }
 
 function renderRoll() {
+  closeBulkNumberMenu();
   refreshItems();
   const token = ++state.thumbnailToken;
   const shownPresentation = state.bulkEditing ? "list" : state.presentation;
@@ -271,15 +276,16 @@ function renderRoll() {
   byId("roll-title").textContent = rollNameInput.value.trim() || defaultRollName();
   byId("roll-screen").classList.toggle("roll-screen-bulk", state.bulkEditing);
   renderImportFailures();
-  byId("roll-normal-header").hidden = state.bulkEditing;
+  byId("roll-normal-header").hidden = false;
   byId("roll-controls").hidden = state.bulkEditing;
   byId("bulk-edit-header").hidden = !state.bulkEditing;
   byId("roll-idle-actions").hidden = state.bulkEditing;
   byId("bulk-edit-controls").hidden = !state.bulkEditing;
   byId("bulk-result").hidden = !state.bulkMessage;
   byId("bulk-result").textContent = state.bulkMessage;
-  byId("bulk-edit-title").textContent = `여러 컷 편집 · ${state.bulkSelection.size}개 선택`;
+  byId("bulk-edit-title").textContent = `${state.bulkSelection.size}컷 선택`;
   byId("bulk-toggle-all").textContent = state.bulkSelection.size === state.items.length ? "전체 해제" : "전체 선택";
+  document.querySelector("[data-go-start]").setAttribute("aria-label", state.bulkEditing ? "여러 컷 편집 끝내기" : "처음으로");
   cutList.className = shownPresentation === "grid" ? `cut-grid columns-${state.columns}` : "cut-list";
   cutList.replaceChildren();
   state.items.forEach((item, index) => {
@@ -364,18 +370,7 @@ function currentPositions() {
 function updateBulkControls() {
   const any = state.bulkSelection.size > 0;
   for (const button of document.querySelectorAll("[data-bulk-orientation], .bulk-action-grid button")) button.disabled = !any;
-  byId("bulk-reverse").disabled = state.bulkSelection.size < 2
-    || !selectionIsContiguous(currentPositions(), [...state.bulkSelection]);
   byId("bulk-export").disabled = !any;
-  requestAnimationFrame(() => {
-    const buttons = [...document.querySelectorAll(".bulk-action-grid button")];
-    for (const button of buttons) button.classList.remove("wrapped");
-    for (const pair of [[buttons[0], buttons[1]], [buttons[2], buttons[3]]]) {
-      if (pair.some((button) => button && button.scrollHeight > 48)) {
-        for (const button of pair) button?.classList.add("wrapped");
-      }
-    }
-  });
 }
 
 function updateToggles() {
@@ -588,7 +583,7 @@ function renderBulkInfo() {
   byId("bulk-info-title").textContent = `고른 ${state.bulkSelection.size}컷에 넣기`;
   const root = byId("bulk-info-rows");
   root.replaceChildren();
-  for (const field of shootingFields) {
+  for (const field of bulkShootingFields) {
     const value = state.bulkDraft[field.key] ?? "";
     root.append(makeInfoRow({
       label: field.label, value, emptyText: "—", action: value.trim() ? "바꾸기" : "추가",
@@ -601,8 +596,10 @@ function renderBulkInfo() {
 function shownBulkValues() {
   return Object.fromEntries(selectedBulkItems().map((item) => [
     item.cutId,
-    Object.fromEntries(shootingFields.map((field) => [
-      field.key, resolveCutField(state.roll, item.importedRecord, cutValues(item), field.key).value,
+    Object.fromEntries(bulkShootingFields.map((field) => [
+      field.key, field.key === "date"
+        ? cutMeta(item).date
+        : resolveCutField(state.roll, item.importedRecord, cutValues(item), field.key).value,
     ])),
   ]));
 }
@@ -612,7 +609,14 @@ function saveBulkInfo(replaceExisting) {
   for (const [cutId, changes] of Object.entries(plan.assignments)) {
     const item = state.items.find((candidate) => candidate.cutId === cutId);
     if (!item) continue;
-    Object.assign(ensureCutValues(item), changes);
+    const { date, ...shootingChanges } = changes;
+    if (date !== undefined) {
+      const meta = cutMeta(item);
+      meta.date = date;
+      meta.dateSource = "이 컷에만 입력";
+      meta.dateProvenance = SHOOTING_DATE_PROVENANCE.user;
+    }
+    if (Object.keys(shootingChanges).length) Object.assign(ensureCutValues(item), shootingChanges);
   }
   state.bulkEditing = false;
   state.bulkSelection = new Set();
@@ -688,7 +692,7 @@ function renderRecentValues() {
 }
 
 function isShootingDateEditor(editing) {
-  return editing?.key === "date" && (editing.scope === "meta" || editing.scope === "command");
+  return editing?.key === "date" && ["meta", "bulk", "command"].includes(editing.scope);
 }
 
 function isRenumberStartEditor(editing) {
@@ -911,10 +915,17 @@ function showOptionDialog(title, choices) {
   const root = byId("dialog-options");
   root.replaceChildren();
   for (const choice of choices) {
+    if (choice.separatorBefore) {
+      const separator = document.createElement("hr");
+      separator.setAttribute("aria-hidden", "true");
+      root.append(separator);
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = choice.label;
+    button.disabled = Boolean(choice.disabled);
     button.addEventListener("click", () => {
+      if (button.disabled) return;
       byId("dialog-layer").hidden = true;
       state.dialog = null;
       choice.action();
@@ -1198,10 +1209,13 @@ function rotateBulk(kind) {
 
 function openBulkNumberMenu() {
   const selected = [...state.bulkSelection];
-  showOptionDialog("번호 바꾸기", [
+  const reverseDisabled = selected.length < 2 || !selectionIsContiguous(currentPositions(), selected);
+  const choices = [
     { label: "+1", action: () => applyBulkPositions(shiftSelection(currentPositions(), selected, 1)) },
     { label: "−1", action: () => applyBulkPositions(shiftSelection(currentPositions(), selected, -1)) },
-    { label: "몇부터 다시 매기기", action: () => openCommandEditor({
+    { label: "맨 앞으로", action: () => applyBulkPositions(moveSelection(currentPositions(), selected, 0)) },
+    { label: "맨 뒤로", action: () => applyBulkPositions(moveSelection(currentPositions(), selected, state.items.length)) },
+    { label: "번호 새로 매기기…", separatorBefore: true, action: () => openCommandEditor({
       label: "컷 번호 다시 매기기", key: "frame", placeholder: "시작 번호", inputMode: "numeric",
       onApply: (value) => {
         const parsed = evaluateFrameNumberEdit(value, 1, new Set());
@@ -1222,15 +1236,7 @@ function openBulkNumberMenu() {
         return applyBulkPositions(positions);
       },
     }) },
-  ]);
-}
-
-function openBulkMoveMenu() {
-  const selected = [...state.bulkSelection];
-  showOptionDialog("옮기기", [
-    { label: "맨 앞으로", action: () => applyBulkPositions(moveSelection(currentPositions(), selected, 0)) },
-    { label: "맨 뒤로", action: () => applyBulkPositions(moveSelection(currentPositions(), selected, state.items.length)) },
-    { label: "몇 번 컷 뒤로…", action: () => openCommandEditor({
+    { label: "다른 컷 뒤로 옮기기…", action: () => openCommandEditor({
       label: "옮기기", key: "move", placeholder: "컷 번호", inputMode: "numeric",
       onApply: (value) => {
         const target = currentPositions().find(({ frame }) => frame === Number(value));
@@ -1241,25 +1247,47 @@ function openBulkMoveMenu() {
         applyBulkPositions(moveSelection(currentPositions(), selected, destination + 1));
       },
     }) },
-  ]);
+    {
+      label: "순서 뒤집기", separatorBefore: true, disabled: reverseDisabled,
+      action: () => applyBulkPositions(reverseSelection(currentPositions(), selected)),
+    },
+  ];
+  const root = byId("bulk-number-menu");
+  root.replaceChildren();
+  for (const choice of choices) {
+    if (choice.separatorBefore) {
+      const separator = document.createElement("hr");
+      separator.setAttribute("aria-hidden", "true");
+      root.append(separator);
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "menuitem");
+    button.textContent = choice.label;
+    button.disabled = Boolean(choice.disabled);
+    button.setAttribute("aria-disabled", String(button.disabled));
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      closeBulkNumberMenu();
+      choice.action();
+    });
+    root.append(button);
+  }
+  root.hidden = false;
+  byId("bulk-number").setAttribute("aria-expanded", "true");
+  bulkNumberMenuItems()[0]?.focus();
 }
 
-function openBulkDateEditor() {
-  const selected = [...state.bulkSelection];
-  openCommandEditor({
-    label: selected.length > 1 ? `촬영일 지정 (컷 ${selected.length}개)` : "촬영일",
-    key: "date", placeholder: SHOOTING_DATE_PLACEHOLDER, inputMode: "numeric",
-    onApply: (value) => {
-      for (const item of state.items.filter((candidate) => selected.includes(candidate.cutId))) {
-        const meta = cutMeta(item);
-        meta.date = value;
-        meta.dateSource = value ? "이 컷에만 입력" : "";
-        meta.dateProvenance = value ? SHOOTING_DATE_PROVENANCE.user : SHOOTING_DATE_PROVENANCE.deleted;
-      }
-      state.bulkAfterAction = true;
-      state.bulkMessage = "";
-    },
-  });
+function bulkNumberMenuItems() {
+  return [...byId("bulk-number-menu").querySelectorAll('[role="menuitem"]:not(:disabled)')];
+}
+
+function closeBulkNumberMenu(restoreFocus = false) {
+  const root = byId("bulk-number-menu");
+  if (root.hidden) return;
+  root.hidden = true;
+  byId("bulk-number").setAttribute("aria-expanded", "false");
+  if (restoreFocus) byId("bulk-number").focus();
 }
 
 function contactHeaderParts() {
@@ -1654,7 +1682,10 @@ for (const button of document.querySelectorAll("[data-columns]")) {
 }
 for (const button of document.querySelectorAll("[data-open-export]")) button.addEventListener("click", () => openExport());
 for (const button of document.querySelectorAll("[data-open-roll-info]")) button.addEventListener("click", () => openRollInfo("cut"));
-for (const button of document.querySelectorAll("[data-go-start]")) button.addEventListener("click", () => showScreen("start"));
+for (const button of document.querySelectorAll("[data-go-start]")) button.addEventListener("click", () => {
+  if (state.bulkEditing) finishBulkEdit();
+  else showScreen("start");
+});
 
 byId("roll-info-button").addEventListener("click", () => openRollInfo("roll"));
 byId("record-unmatched-fix").addEventListener("click", openBulkEdit);
@@ -1689,7 +1720,6 @@ function finishBulkEdit() {
   state.bulkMessage = "";
   renderRoll();
 }
-byId("bulk-header-back").addEventListener("click", finishBulkEdit);
 byId("bulk-finish").addEventListener("click", finishBulkEdit);
 byId("bulk-export").addEventListener("click", () => openExport(new Set(state.bulkSelection)));
 byId("bulk-shooting-info").addEventListener("click", () => {
@@ -1700,9 +1730,29 @@ byId("bulk-shooting-info").addEventListener("click", () => {
 byId("bulk-info-back").addEventListener("click", () => { state.bulkDraft = {}; renderRoll(); showScreen("roll"); });
 byId("bulk-info-done").addEventListener("click", requestBulkInfoSave);
 byId("bulk-number").addEventListener("click", openBulkNumberMenu);
-byId("bulk-date").addEventListener("click", openBulkDateEditor);
-byId("bulk-move").addEventListener("click", openBulkMoveMenu);
-byId("bulk-reverse").addEventListener("click", () => applyBulkPositions(reverseSelection(currentPositions(), [...state.bulkSelection])));
+byId("bulk-number-menu").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeBulkNumberMenu(true);
+    return;
+  }
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const items = bulkNumberMenuItems();
+  if (!items.length) return;
+  const current = items.indexOf(document.activeElement);
+  let next = current;
+  if (event.key === "Home") next = 0;
+  if (event.key === "End") next = items.length - 1;
+  if (event.key === "ArrowDown") next = (current + 1 + items.length) % items.length;
+  if (event.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
+  items[next].focus();
+});
+document.addEventListener("click", (event) => {
+  const root = byId("bulk-number-menu");
+  if (root.hidden || root.contains(event.target) || event.target === byId("bulk-number")) return;
+  closeBulkNumberMenu(root.contains(document.activeElement));
+});
 for (const button of document.querySelectorAll("[data-bulk-orientation]")) {
   button.addEventListener("click", () => rotateBulk(button.dataset.bulkOrientation));
 }

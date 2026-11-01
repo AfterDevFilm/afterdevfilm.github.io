@@ -1,4 +1,5 @@
 const FIELD_OUTPUT = {
+  date: "촬영일을",
   camera: "카메라를",
   lens: "렌즈를",
   focal: "초점거리(mm)를",

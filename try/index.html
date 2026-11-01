@@ -60,8 +60,7 @@
           </section>
         </div>
         <div id="bulk-edit-header" class="bulk-edit-header" hidden>
-          <button id="bulk-header-back" class="back-button" type="button" aria-label="여러 컷 편집 끝내기">‹</button>
-          <strong id="bulk-edit-title">여러 컷 편집 · 0개 선택</strong>
+          <span id="bulk-edit-title">0컷 선택</span>
           <button id="bulk-toggle-all" type="button">전체 선택</button>
         </div>
       </header>
@@ -91,17 +90,15 @@
           <button class="primary" type="button" data-open-export>내보내기</button>
         </div>
         <div id="bulk-edit-controls" hidden>
+          <div class="bulk-action-grid">
+            <button id="bulk-shooting-info" type="button">촬영 정보 넣기</button>
+            <button id="bulk-number" type="button" aria-haspopup="menu" aria-controls="bulk-number-menu" aria-expanded="false">컷 번호 바꾸기</button>
+            <div id="bulk-number-menu" class="bulk-number-menu" role="menu" aria-label="컷 번호 바꾸기" hidden></div>
+          </div>
           <div class="bulk-orientation-actions" aria-label="고른 컷 사진 방향">
             <button type="button" data-bulk-orientation="left">↶<span>왼쪽</span></button>
             <button type="button" data-bulk-orientation="right">↷<span>오른쪽</span></button>
             <button type="button" data-bulk-orientation="flip">↔<span>좌우 반전</span></button>
-          </div>
-          <div class="bulk-action-grid">
-            <button id="bulk-shooting-info" type="button">촬영 정보 넣기</button>
-            <button id="bulk-number" type="button">번호 바꾸기</button>
-            <button id="bulk-date" type="button">촬영일</button>
-            <button id="bulk-move" type="button">옮기기</button>
-            <button id="bulk-reverse" type="button">순서 뒤집기</button>
           </div>
           <div class="bulk-terminal-actions">
             <button id="bulk-finish" class="secondary" type="button">끝내기</button>
