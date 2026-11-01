@@ -548,7 +548,10 @@ h2 {
   right: 0;
   bottom: calc(100% + 8px);
   display: grid;
-  width: min(280px, calc(100vw - 24px));
+  /* owner 11-01 "웹이랑 앱이랑 맞추시오": like the apps, the menu hangs from the 컷 번호 바꾸기 button — at least that button's half width, otherwise as wide as its words */
+  width: max-content;
+  min-width: calc(50% - 4px);
+  max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
   padding: 8px 0;
   overflow-y: auto;
