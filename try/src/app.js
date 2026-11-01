@@ -20,6 +20,7 @@ import {
   moveSelection, planBulkShootingInfo, renumberByOrder, renumberSelection, reverseSelection, selectionIsContiguous, shiftSelection,
 } from "./core/multi-edit.js";
 import { contactSheetBlob, evaluateContactSheetLimit, renderContactSheet } from "./core/contact-sheet.js";
+import { webpEncoderReady } from "./adapters/webp-encoder.js";
 import {
   TEMPLATE_ROLL_FIELDS, cutNameRejectedLine, rollMissingNumberLine, templateConfirmationNoticeLines, templateCutLine,
 } from "./core/template-import.js";
@@ -1113,14 +1114,9 @@ function renderExportCuts() {
   updateExportControls();
 }
 
-function probeWebpSupport() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1;
-  canvas.height = 1;
-  canvas.toBlob((blob) => {
-    state.webpSupported = blob?.type === "image/webp";
-    byId("webp-app-badge").hidden = state.webpSupported;
-  }, "image/webp");
+async function probeWebpSupport() {
+  state.webpSupported = await webpEncoderReady();
+  byId("webp-app-badge").hidden = state.webpSupported;
 }
 
 function openExport(selectedCutIds = null) {
@@ -1339,6 +1335,10 @@ function updateContactControls() {
   for (const button of document.querySelectorAll("[data-contact-format]")) button.classList.toggle("selected", button.dataset.contactFormat === state.contactFormat);
   for (const button of document.querySelectorAll("[data-contact-quality]")) button.classList.toggle("selected", button.dataset.contactQuality === state.contactQuality);
   byId("contact-quality-row").hidden = state.contactFormat === "png";
+  const lossless = byId("contact-quality").querySelector('[data-contact-quality="lossless"]');
+  lossless.hidden = state.contactFormat !== "webp";
+  byId("contact-quality").classList.toggle("four", state.contactFormat === "webp");
+  byId("contact-quality").classList.toggle("three", state.contactFormat !== "webp");
   byId("contact-header-enabled").checked = state.contactHeader;
   const disabled = !state.contactRender?.canvas;
   byId("contact-save").disabled = disabled;
@@ -1353,8 +1353,8 @@ function setContactResult(message) {
 async function makeContactFile(download = false) {
   if (!state.contactRender?.canvas) return null;
   const started = performance.now();
-  const quality = { high: 0.92, balanced: 0.82, small: 0.68 }[state.contactQuality] ?? 0.92;
-  const blob = await contactSheetBlob(state.contactRender.canvas, state.contactFormat, quality);
+  const quality = { high: 0.85, balanced: 0.75, small: 0.65 }[state.contactQuality] ?? 0.85;
+  const blob = await contactSheetBlob(state.contactRender.canvas, state.contactFormat, quality, state.contactQuality === "lossless");
   const extension = { jpeg: "jpg", webp: "webp", png: "png" }[state.contactFormat];
   const name = `${rollNameInput.value.trim() || defaultRollName()}_contact.${extension}`;
   const elapsedMs = performance.now() - started;
@@ -1551,9 +1551,9 @@ async function receiveRecord(file) {
 
 async function buildOutput() {
   const rollName = rollNameInput.value || defaultRollName();
-  const quality = { high: 0.92, balanced: 0.82, small: 0.68 }[state.exportQuality] ?? 0.92;
+  const quality = { high: 0.85, balanced: 0.75, small: 0.65 }[state.exportQuality] ?? 0.85;
   return exportConfiguredZip(currentExportItems(), {
-    rollName, mode: state.mode, format: state.exportFormat, quality,
+    rollName, mode: state.mode, format: state.exportFormat, quality, lossless: state.exportQuality === "lossless",
     width: state.exportDigits, rollFrameLabel: state.rollFrameLabel,
     rgbHistogram: state.mode === "off" ? false : state.rgbHistogram,
     paddingRatio: state.mode === "off" ? "original" : state.paddingRatio,
@@ -1838,6 +1838,7 @@ for (const button of document.querySelectorAll("[data-format]")) {
   button.addEventListener("click", () => {
     if (button.dataset.format === "webp" && state.webpSupported === false) { openAppPreview("webp"); return; }
     state.exportFormat = button.dataset.format;
+    if (state.exportFormat !== "webp" && state.exportQuality === "lossless") state.exportQuality = "high";
     if (state.exportFormat === "png") state.exportQuality = "high";
     updateExportControls();
   });
@@ -1846,6 +1847,7 @@ for (const button of document.querySelectorAll("[data-contact-format]")) {
   button.addEventListener("click", () => {
     if (button.dataset.contactFormat === "webp" && state.webpSupported === false) { openAppPreview("webp"); return; }
     state.contactFormat = button.dataset.contactFormat;
+    if (state.contactFormat !== "webp" && state.contactQuality === "lossless") state.contactQuality = "high";
     state.contactFile = null;
     updateContactControls();
   });
@@ -1871,7 +1873,6 @@ byId("contact-share").addEventListener("click", async () => {
 });
 for (const button of document.querySelectorAll("[data-quality]")) {
   button.addEventListener("click", () => {
-    if (button.dataset.quality === "lossless") { openAppPreview("webp"); return; }
     state.exportQuality = button.dataset.quality;
     updateExportControls();
   });

@@ -1,3 +1,5 @@
+import { encodeWebp, releaseWebpEncoder } from "../adapters/webp-encoder.js";
+
 const SPEC = {
   columns: 6,
   cellWidth: 360,
@@ -121,16 +123,25 @@ export async function renderContactSheet(items, { header = null, corrections = {
   return { ...limit, canvas };
 }
 
-export function contactSheetBlob(canvas, format = "jpeg", quality = 0.92) {
-  const type = { jpeg: "image/jpeg", webp: "image/webp", png: "image/png" }[format];
-  if (!type) return Promise.reject(new Error("모아 보기 형식을 고르지 못했어요."));
-  return new Promise((resolve, reject) => canvas.toBlob((blob) => {
-    if (!blob || blob.type !== type) {
-      reject(new Error(type === "image/webp" ? "이 브라우저에서는 WebP를 만들 수 없어요." : "모아 보기 파일을 만들지 못했어요."));
-      return;
+export async function contactSheetBlob(canvas, format = "jpeg", quality = 0.85, lossless = false) {
+  try {
+    const type = { jpeg: "image/jpeg", webp: "image/webp", png: "image/png" }[format];
+    if (!type) throw new Error("모아 보기 형식을 고르지 못했어요.");
+    if (type === "image/webp") {
+      const rgba = canvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height).data;
+      const bytes = await encodeWebp(rgba, canvas.width, canvas.height, { quality, lossless });
+      return new Blob([bytes], { type });
     }
-    resolve(blob);
-  }, type, quality));
+    return await new Promise((resolve, reject) => canvas.toBlob((blob) => {
+      if (!blob || blob.type !== type) {
+        reject(new Error("모아 보기 파일을 만들지 못했어요."));
+        return;
+      }
+      resolve(blob);
+    }, type, quality));
+  } finally {
+    releaseWebpEncoder();
+  }
 }
 
 export { SPEC as contactSheetSpec };

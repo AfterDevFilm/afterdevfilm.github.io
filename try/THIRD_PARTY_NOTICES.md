@@ -10,6 +10,22 @@
 
 The project license is not decided. The following notices apply only to bundled third-party files.
 
+## wasm-webp 0.1.0
+
+Copyright (c) 2024 nieyuyao0826@hotmail.com
+
+- License: MIT
+- Files: `src/vendor/wasm-webp-0.1.0/index.js`, `src/vendor/wasm-webp-0.1.0/webp-wasm.js`
+- Full license: `src/vendor/wasm-webp-0.1.0/LICENSE.wasm-webp`
+
+## libwebp 1.3.2
+
+Copyright (c) 2010, Google Inc. All rights reserved.
+
+- License: BSD-3-Clause
+- File: `src/vendor/wasm-webp-0.1.0/webp-wasm.wasm`
+- Full license: `src/vendor/wasm-webp-0.1.0/LICENSE.libwebp`
+
 ## crc-32 1.2.2
 
 Copyright (C) 2014-present SheetJS LLC

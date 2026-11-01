@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; img-src 'self' blob: data:; style-src 'self'; script-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' blob: data:; style-src 'self'; script-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>AfterDev 웹 체험판</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -158,6 +158,7 @@
             <button class="selected" type="button" data-contact-quality="high">고화질</button>
             <button type="button" data-contact-quality="balanced">균형</button>
             <button type="button" data-contact-quality="small">작은 파일</button>
+            <button type="button" data-contact-quality="lossless" hidden>무손실</button>
           </div>
         </div>
         <p id="contact-result" class="contact-result" role="status"></p>

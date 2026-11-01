@@ -1,5 +1,6 @@
 import { createZipWriter, makeZip } from "../adapters/zip.js";
 import { writePhotoMetadata } from "../adapters/exif.js";
+import { encodeWebp, releaseWebpEncoder } from "../adapters/webp-encoder.js";
 import { makeExportFilename } from "./export-rules.js";
 import { evaluateInformationFramePhotoLimit, renderInformationFrame } from "./information-frame.js";
 import { correctedPhotoCanvas, correctedPhotoDimensions, releaseCanvas } from "./photo-correction.js";
@@ -114,10 +115,14 @@ export async function exportFramedPhotoZip(items, rollName, mode) {
   return { bytes: makeZip(files), files, photoOnlyFrames };
 }
 
-function canvasBytes(canvas, type, quality) {
+async function canvasBytes(canvas, type, quality, lossless) {
+  if (type === "image/webp") {
+    const rgba = canvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height).data;
+    return encodeWebp(rgba, canvas.width, canvas.height, { quality, lossless });
+  }
   return new Promise((resolve, reject) => canvas.toBlob(async (blob) => {
     if (!blob || blob.type !== type) {
-      reject(new Error(type === "image/webp" ? "이 브라우저에서는 WebP를 만들 수 없어요." : "사진 파일을 만들지 못했어요."));
+      reject(new Error("사진 파일을 만들지 못했어요."));
       return;
     }
     resolve(new Uint8Array(await blob.arrayBuffer()));
@@ -131,57 +136,61 @@ function canvasBytes(canvas, type, quality) {
  * Returns `{ zip: Blob, files, photoOnlyFrames }`.
  */
 export async function exportConfiguredZip(items, {
-  rollName = "roll", mode = "off", format = "jpeg", quality = 0.9, width = 2,
+  rollName = "roll", mode = "off", format = "jpeg", quality = 0.85, lossless = false, width = 2,
   includeCut = false, rollFrameLabel = false, rgbHistogram = false, paddingRatio = "original",
 } = {}) {
-  const type = { jpeg: "image/jpeg", webp: "image/webp", png: "image/png" }[format];
-  const extension = { jpeg: "jpg", webp: "webp", png: "png" }[format];
-  if (!type) throw new Error("내보낼 사진 형식을 고르지 못했어요.");
-  const writer = createZipWriter();
-  const files = [];
-  const photoOnlyFrames = [];
-  for (const item of items) {
-    const metadata = { ...item.record, roll: item.record.rollNumber ?? rollName, frame: item.frame };
-    const frameAllowed = mode === "off" || evaluateInformationFramePhotoLimit(item).allowed;
-    const actualMode = frameAllowed ? mode : "off";
-    if (!frameAllowed) photoOnlyFrames.push(item.frame);
-    const nameResult = makeExportFilename({
-      roll: rollName, frame: item.frame, width, includeCut, cut: item.cutName || null,
-      mode: actualMode, ext: extension,
-    });
-    if (nameResult.result !== "name") throw new Error("내보낼 파일 이름을 만들지 못했어요.");
+  try {
+    const type = { jpeg: "image/jpeg", webp: "image/webp", png: "image/png" }[format];
+    const extension = { jpeg: "jpg", webp: "webp", png: "png" }[format];
+    if (!type) throw new Error("내보낼 사진 형식을 고르지 못했어요.");
+    const writer = createZipWriter();
+    const files = [];
+    const photoOnlyFrames = [];
+    for (const item of items) {
+      const metadata = { ...item.record, roll: item.record.rollNumber ?? rollName, frame: item.frame };
+      const frameAllowed = mode === "off" || evaluateInformationFramePhotoLimit(item).allowed;
+      const actualMode = frameAllowed ? mode : "off";
+      if (!frameAllowed) photoOnlyFrames.push(item.frame);
+      const nameResult = makeExportFilename({
+        roll: rollName, frame: item.frame, width, includeCut, cut: item.cutName || null,
+        mode: actualMode, ext: extension,
+      });
+      if (nameResult.result !== "name") throw new Error("내보낼 파일 이름을 만들지 못했어요.");
 
-    let bytes;
-    let outputName = nameResult.name;
-    let shown = correctedPhotoDimensions(item.width, item.height, item.correction);
-    const correction = item.correction ?? { turns: 0, flipped: false };
-    const unchanged = correction.turns % 4 === 0 && !correction.flipped;
-    if (actualMode === "off" && format === "jpeg" && item.format !== "png" && unchanged) {
-      bytes = metadataOnlyBytes(item, metadata);
-    } else {
-      const made = [];
-      try {
-        const rendered = actualMode === "off" ? null : await renderInformationFrame(item, metadata, actualMode, item.frame, quality, rollFrameLabel, rgbHistogram);
-        let canvas = actualMode === "off" ? await correctedPhotoCanvas(item) : rendered.canvas;
-        made.push(canvas);
-        if (actualMode !== "off") {
-          const blockWidth = canvas.width;
-          const blockHeight = canvas.height;
-          canvas = applyPaddingRatioCanvas(canvas, paddingRatio, rendered.geometry.photoY, rendered.geometry.photoHeight);
-          if (!made.includes(canvas)) made.push(canvas);
-          outputName = applyPaddingRatioFilename(outputName, paddingRatio, blockWidth, blockHeight);
+      let bytes;
+      let outputName = nameResult.name;
+      let shown = correctedPhotoDimensions(item.width, item.height, item.correction);
+      const correction = item.correction ?? { turns: 0, flipped: false };
+      const unchanged = correction.turns % 4 === 0 && !correction.flipped;
+      if (actualMode === "off" && format === "jpeg" && item.format !== "png" && unchanged) {
+        bytes = metadataOnlyBytes(item, metadata);
+      } else {
+        const made = [];
+        try {
+          const rendered = actualMode === "off" ? null : await renderInformationFrame(item, metadata, actualMode, item.frame, quality, rollFrameLabel, rgbHistogram);
+          let canvas = actualMode === "off" ? await correctedPhotoCanvas(item) : rendered.canvas;
+          made.push(canvas);
+          if (actualMode !== "off") {
+            const blockWidth = canvas.width;
+            const blockHeight = canvas.height;
+            canvas = applyPaddingRatioCanvas(canvas, paddingRatio, rendered.geometry.photoY, rendered.geometry.photoHeight);
+            if (!made.includes(canvas)) made.push(canvas);
+            outputName = applyPaddingRatioFilename(outputName, paddingRatio, blockWidth, blockHeight);
+          }
+          shown = { width: canvas.width, height: canvas.height };
+          bytes = await canvasBytes(canvas, type, quality, lossless);
+        } finally {
+          for (const canvas of made) releaseCanvas(canvas);
         }
-        shown = { width: canvas.width, height: canvas.height };
-        bytes = await canvasBytes(canvas, type, quality);
-      } finally {
-        for (const canvas of made) releaseCanvas(canvas);
+        if (format === "jpeg") bytes = writePhotoMetadata(bytes, metadata);
       }
-      if (format === "jpeg") bytes = writePhotoMetadata(bytes, metadata);
+      writer.add(outputName, bytes);
+      files.push({ name: outputName, type, blob: new Blob([bytes], { type }), size: bytes.length, ...shown });
     }
-    writer.add(outputName, bytes);
-    files.push({ name: outputName, type, blob: new Blob([bytes], { type }), size: bytes.length, ...shown });
+    return { zip: writer.finish(), files, photoOnlyFrames };
+  } finally {
+    releaseWebpEncoder();
   }
-  return { zip: writer.finish(), files, photoOnlyFrames };
 }
 
 export function downloadBytes(bytes, name, type = "application/zip") {
