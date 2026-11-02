@@ -906,6 +906,7 @@ h2 {
 }
 .template-line span:first-child { white-space: nowrap; }
 .template-cut-lines .template-line { display: block; }
+.template-line .field-message { grid-column: 1 / -1; margin: 0; padding: 8px; font-family: inherit; }
 .record-confirm-notices {
   display: grid;
   gap: 8px;

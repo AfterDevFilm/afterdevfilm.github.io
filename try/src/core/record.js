@@ -1,6 +1,6 @@
 import { cleanExposureRational } from "./value-rules.js";
 import { TEMPLATE_CONFIRMATION_KIND } from "./template-import.js";
-import { rollNumberProposal } from "./integer-input.js";
+import { canonicalIntegerInput, rollNumberProposal } from "./integer-input.js";
 
 export const MAX_TEMPLATE_PHYSICAL_LINES = 1000;
 export const TEMPLATE_RECORD_TOO_LARGE = "TOO_LARGE";
@@ -105,8 +105,7 @@ export function unknownColumnsLine(columns) {
 function usableRollValue(field, value) {
   const clean = parseQuoted(value);
   if (!clean || clean === "미확정") return null;
-  if (field === "ei" && !/^\d+$/.test(clean)) return null;
-  if (field === "boxSpeed" && !/^\d+$/.test(clean)) return null;
+  if (field === "ei" || field === "boxSpeed") return canonicalIntegerInput(clean);
   return clean;
 }
 

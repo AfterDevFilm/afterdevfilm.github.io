@@ -1,3 +1,5 @@
+import { rollIdentifierKey } from "./natural-sort.js";
+
 const reasonLine = {
   disconnected: (numbers) => `${numbers}번 컷은 연결이 끊어져 내보낼 수 없어요.`,
   unreadable: (numbers) => `${numbers}번 컷은 스캔 파일이 열리지 않아 내보낼 수 없어요.`,
@@ -23,6 +25,8 @@ const denyRanges = [
   [0x115f, 0x1160], [0x3164, 0x3164], [0xffa0, 0xffa0], [0x2028, 0x2029],
 ];
 const deniedAscii = new Set([..."/\\:*?\"<>|"].map((character) => character.codePointAt(0)));
+const RESERVED_SINGLE_PHOTO_ROLL_NAME = "Single Photo";
+export const ROLL_NAME_RESERVED_MESSAGE = "이 이름은 한 컷 저장용이라 쓸 수 없어요.";
 
 function codePoints(value) {
   return [...String(value)];
@@ -54,6 +58,9 @@ export function checkRollName(raw) {
   if (!value) return { result: "invalid", reason: "empty" };
   const offendingCodePoint = deniedCodePoint(value);
   if (offendingCodePoint !== null) return { result: "invalid", reason: "denied_character", offendingCodePoint };
+  if (rollIdentifierKey(value) === rollIdentifierKey(RESERVED_SINGLE_PHOTO_ROLL_NAME)) {
+    return { result: "invalid", reason: "reserved" };
+  }
   if (value.startsWith(".")) return { result: "invalid", reason: "leading_dot" };
   if (utf8Length(`${value}_1.webp`) > MAX_FILENAME_BYTES) return { result: "invalid", reason: "too_long" };
   return { result: "valid", value };

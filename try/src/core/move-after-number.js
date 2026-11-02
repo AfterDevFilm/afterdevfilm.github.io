@@ -23,10 +23,10 @@ function invalidResult() {
 
 /** RULE-UI-0112: pure decision policy for the multi-Cut "move after number" action. */
 export function evaluateMoveAfterNumber(typed, cuts, selected) {
-  const trimmed = String(typed ?? "").trim();
-  if (!trimmed) return { kind: "empty", completeEnabled: false, messageKey: null };
+  const input = String(typed ?? "");
+  if (!input) return { kind: "empty", completeEnabled: false, messageKey: null };
 
-  const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  const parsed = /^[0-9]+$/.test(input) ? Number(input) : Number.NaN;
   if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > MOVE_AFTER_NUMBER_MAX) {
     return invalidResult();
   }
@@ -41,6 +41,7 @@ export function evaluateMoveAfterNumber(typed, cuts, selected) {
       completeEnabled: false,
       messageKey: MOVE_AFTER_MESSAGE_KEYS.selectedOwn,
       number,
+      normalizedInput: number,
       messageText: `${number}번은 옮기려고 고른 컷이에요. 다른 컷 번호를 입력해 주세요.`,
     };
   }
@@ -54,6 +55,7 @@ export function evaluateMoveAfterNumber(typed, cuts, selected) {
       kind: "move_after",
       completeEnabled: true,
       messageKey: null,
+      normalizedInput: number,
       order,
       numbers: Object.fromEntries(cuts.map(({ id, number: cutNumber }) => [id, cutNumber])),
     };
@@ -98,6 +100,7 @@ export function evaluateMoveAfterNumber(typed, cuts, selected) {
       kind: "attach_new",
       completeEnabled: true,
       messageKey: MOVE_AFTER_MESSAGE_KEYS.attachNew,
+      normalizedInput: number,
       order,
       numbers,
       newNumbers,
@@ -109,6 +112,7 @@ export function evaluateMoveAfterNumber(typed, cuts, selected) {
     kind: "overlap_shift",
     completeEnabled: true,
     messageKey: MOVE_AFTER_MESSAGE_KEYS.overlapShift,
+    normalizedInput: number,
     order,
     numbers,
     newNumbers,

@@ -2,7 +2,9 @@ import { readPhotoZipBlob, zipLimitMessageLines, WEB_ZIP_LIMITS, ZIP_ERROR_KIND_
 import { cleanShootingDate, parseCsvRecord, parseMarkdownRecord, recordUnreadEntries, unknownColumnsLine } from "./core/record.js";
 import { matchCutsToPhotos } from "./core/match.js";
 import { applyPaddingRatioCanvas, downloadBytes, exportConfiguredZip } from "./core/export.js";
-import { compactNumbers, groupExcludedLines, makeExportArchiveFilename } from "./core/export-rules.js";
+import {
+  ROLL_NAME_RESERVED_MESSAGE, checkRollName, compactNumbers, groupExcludedLines, makeExportArchiveFilename,
+} from "./core/export-rules.js";
 import { evaluateInformationFramePhotoLimit, renderInformationFrame, showsRGBHistogramControl } from "./core/information-frame.js";
 import { defaultRollName } from "./core/default-roll-name.js";
 import { resolveCutField, resolveCutRecord } from "./core/roll-values.js";
@@ -29,8 +31,10 @@ import {
   ThumbnailBitmapCache, makeThumbnailBitmap, renderCachedThumbnail,
 } from "./core/thumbnail-cache.js";
 import {
-  FRAME_NUMBER_HELPER, FRAME_NUMBER_MAXIMUM, evaluateFrameNumberEdit, frameNumberMessage,
+  BULK_STEP_NUMBER_CONFLICT_MESSAGE, FRAME_NUMBER_HELPER, FRAME_NUMBER_MAXIMUM,
+  evaluateBulkStepNumbers, evaluateFrameNumberEdit, frameNumberMessage,
 } from "./core/frame-number-edit.js";
+import { evaluateMoveAfterNumber } from "./core/move-after-number.js";
 
 const SHOOTING_DATE_INVALID_MESSAGE = "2026-09-27처럼 올바른 날짜를 입력해 주세요.";
 const SHOOTING_DATE_HELPER = "2026-09-27처럼 입력해요. 스캔 파일의 날짜는 쓰지 않아요.";
@@ -700,6 +704,18 @@ function isRenumberStartEditor(editing) {
   return editing?.scope === "command" && editing.key === "frame";
 }
 
+function isMoveAfterEditor(editing) {
+  return editing?.scope === "command" && editing.key === "move";
+}
+
+function evaluateCurrentMoveAfterNumber(value) {
+  return evaluateMoveAfterNumber(
+    value,
+    currentPositions().map(({ cut, frame }) => ({ id: cut, number: frame })),
+    state.bulkSelection,
+  );
+}
+
 function shootingDateEditResult(raw) {
   const value = String(raw ?? "").trim();
   return { value, valid: value === "" || cleanShootingDate(value) === value };
@@ -723,6 +739,11 @@ function updateFieldMessage() {
   } else if (isRenumberStartEditor(editing)) {
     const result = evaluateFrameNumberEdit(value, 1, new Set());
     editing.validationMessage = frameNumberMessage(result.messageKey) ?? "";
+    editing.validationValue = value;
+    done.disabled = !result.completeEnabled;
+  } else if (isMoveAfterEditor(editing)) {
+    const result = evaluateCurrentMoveAfterNumber(value);
+    editing.validationMessage = result.completeEnabled ? "" : result.messageText ?? "";
     editing.validationValue = value;
     done.disabled = !result.completeEnabled;
   } else if (isShootingDateEditor(editing)) {
@@ -796,7 +817,7 @@ function applyFieldValue(value, extra = null) {
     value = result.value;
   }
   if (editing.scope === "command") {
-    if (editing.onApply(value.trim()) === false) return;
+    if (editing.onApply(value) === false) return;
   } else if (editing.scope === "meta") {
     const item = state.items[state.currentCut];
     const meta = cutMeta(item);
@@ -1166,6 +1187,25 @@ function applyBulkPositions(positions) {
   return true;
 }
 
+function applyBulkStep(amount) {
+  const before = currentPositions();
+  const result = evaluateBulkStepNumbers(
+    Object.fromEntries(before.map(({ cut, frame }) => [cut, frame])),
+    state.bulkSelection,
+    amount,
+  );
+  if (!result.changed) {
+    showBulkNotice(BULK_STEP_NUMBER_CONFLICT_MESSAGE);
+    return false;
+  }
+  const positions = shiftSelection(before, [...state.bulkSelection], amount);
+  return applyBulkPositions(positions);
+}
+
+function applyMoveAfterResult(result) {
+  return applyBulkPositions(result.order.map((cut) => ({ cut, frame: result.numbers[cut] })));
+}
+
 function reprojectTemplateDates() {
   const projected = reprojectProviderShootingDates(
     state.items.map((item) => {
@@ -1207,8 +1247,8 @@ function openBulkNumberMenu() {
   const selected = [...state.bulkSelection];
   const reverseDisabled = selected.length < 2 || !selectionIsContiguous(currentPositions(), selected);
   const choices = [
-    { label: "+1", action: () => applyBulkPositions(shiftSelection(currentPositions(), selected, 1)) },
-    { label: "−1", action: () => applyBulkPositions(shiftSelection(currentPositions(), selected, -1)) },
+    { label: "+1", action: () => applyBulkStep(1) },
+    { label: "−1", action: () => applyBulkStep(-1) },
     { label: "맨 앞으로", action: () => applyBulkPositions(moveSelection(currentPositions(), selected, 0)) },
     { label: "맨 뒤로", action: () => applyBulkPositions(moveSelection(currentPositions(), selected, state.items.length)) },
     { label: "번호 새로 매기기…", separatorBefore: true, action: () => openCommandEditor({
@@ -1235,12 +1275,26 @@ function openBulkNumberMenu() {
     { label: "다른 컷 뒤로 옮기기…", action: () => openCommandEditor({
       label: "옮기기", key: "move", placeholder: "컷 번호", inputMode: "numeric",
       onApply: (value) => {
-        const target = currentPositions().find(({ frame }) => frame === Number(value));
-        if (!target) return;
-        if (state.bulkSelection.has(target.cut)) return;
-        const remaining = currentPositions().filter(({ cut }) => !state.bulkSelection.has(cut));
-        const destination = remaining.findIndex(({ cut }) => cut === target.cut);
-        applyBulkPositions(moveSelection(currentPositions(), selected, destination + 1));
+        const result = evaluateCurrentMoveAfterNumber(value);
+        if (!result.completeEnabled) {
+          state.editing.validationMessage = result.messageText ?? "";
+          state.editing.validationValue = value;
+          updateFieldMessage();
+          return false;
+        }
+        if (result.kind === "move_after") return applyMoveAfterResult(result);
+        // TXT-UI-0365 (new numbers) / TXT-UI-0367 (shift the numbers behind); the cancel button is `취소` like the apps.
+        showDialog({
+          title: "컷 번호 바꾸기", body: result.messageText, cancel: "취소", confirm: result.kind === "overlap_shift" ? "뒤 번호 밀기" : "새 번호 붙이기",
+          onCancel: () => {},
+          onConfirm: () => {
+            if (applyMoveAfterResult(result)) {
+              state.editing = null;
+              showScreen("roll");
+            }
+          },
+        });
+        return false;
       },
     }) },
     {
@@ -1458,6 +1512,13 @@ function renderRecordConfirmation() {
     const value = document.createElement("span");
     value.textContent = parsed.roll[key] ?? "—";
     row.append(name, value);
+    if (key === "name" && parsed.roll[key] && checkRollName(parsed.roll[key]).reason === "reserved") {
+      // RULE-UI-0009: a reserved Roll name is not saved; the error sits under the Roll name line and the import is off.
+      const message = document.createElement("p");
+      message.className = "field-message error-text";
+      message.textContent = ROLL_NAME_RESERVED_MESSAGE;
+      row.append(message);
+    }
     rollRoot.append(row);
   }
 
@@ -1494,13 +1555,14 @@ function renderRecordConfirmation() {
     line.textContent = `${entry.line}: ${entry.text}`;
     unreadRoot.append(line);
   }
-  byId("record-confirm").disabled = false;
+  byId("record-confirm").disabled = Boolean(document.querySelector("#record-roll-values .error-text:not([hidden])"));
 }
 
 function confirmRecordImport() {
   const pending = state.pendingRecord;
   if (!pending) return;
   const { parsed, fileName } = pending;
+  if (parsed.roll.name && checkRollName(parsed.roll.name).reason === "reserved") return;
   const importedRoll = { ...parsed.roll };
   if (importedRoll.name) {
     rollNameInput.value = importedRoll.name;
