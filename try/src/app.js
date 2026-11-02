@@ -76,7 +76,7 @@ function framePositionsProblem(positions) {
 
 const state = {
   photos: [], importFailures: [], records: [], cutValues: [], roll: {}, items: [], mode: null,
-  screen: "start", returnScreen: "roll", presentation: "grid", columns: 2,
+  screen: "start", returnScreen: "roll", presentation: "grid", columns: 3,
   currentCut: 0, previewToken: 0, thumbnailToken: 0, shareSession: null,
   orientation: {}, cutMeta: {}, recent: {}, editing: null, dialog: null, rollAskPending: true,
   exportFormat: "jpeg", exportQuality: "high", exportDigits: 2, rollFrameLabel: false, rgbHistogram: false, paddingRatio: "original",
