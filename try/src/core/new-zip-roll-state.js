@@ -1,0 +1,1 @@
+export function newZipRollState(e){return{...e,roll:{},records:[],recordFileName:"",importedRollKeys:new Set,pendingRecord:null,rollName:""}}
