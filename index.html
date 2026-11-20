@@ -24,6 +24,7 @@ h1{margin:24px 0 4px;font-size:34px;line-height:1.25;letter-spacing:-.01em}
 .btn:focus-visible,a:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
 .status{margin:14px 0 0;color:var(--ink-muted);font-size:15px;display:flex;flex-wrap:wrap;justify-content:center;gap:0 .85em}
 .status span{max-width:100%}
+.status .status-divider{margin-right:.85em}
 .features{display:grid;gap:16px;margin:40px 0 0}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
 .card h2{margin:0 0 8px;font-size:18px;line-height:1.4;text-wrap:balance}
@@ -44,13 +45,13 @@ footer p{margin:6px 0}
 <span>한 롤을 통째로 가져올 수도, 한 컷만 골라서 편집할 수도 있어요.</span>
 <span>촬영 정보를 덧붙여 저장하거나 공유할 수 있어요.</span></p>
 <p class="cta"><a class="btn" href="./try/">웹에서 써 보기</a></p>
-<p class="status"><span>안드로이드 비공개 테스트 중</span> <span>iOS 출시 예정</span></p>
+<p class="status"><span>안드로이드 비공개 테스트 중</span> <span><span class="status-divider" aria-hidden="true">·</span>iOS 출시 예정</span></p>
 </header>
 <section class="features" aria-label="현상후로 할 수 있는 일">
-<article class="card"><h2>스캔 파일 정리</h2><p>현상소에서 받은 ZIP 파일을 그대로 불러올 수 있어요. 컷 번호와 순서를 맞추고, 사진을 돌리거나 뒤집을 수 있어요.</p></article>
-<article class="card"><h2>저장과 공유</h2><p>JPEG, PNG, WebP로 저장하거나 다른 앱에 공유할 수 있어요. 여러 컷을 한 장에 모아 볼 수도 있어요.</p></article>
-<article class="card"><h2>촬영 정보 기록</h2><p>카메라와 필름은 롤마다 한 번만 적고, 조리개나 셔터 속도는 컷마다 따로 적을 수 있어요. 촬영 정보는 사진 아래에 붙이거나 빼고 저장할 수 있어요.</p></article>
-<article class="card"><h2>기기 안에서 처리</h2><p>가입 없이 쓸 수 있어요. 사진과 촬영 기록은 기기에서 처리하고, 개발자 서버로 자동 전송하지 않아요.</p></article>
+<article class="card"><h2>스캔 정리</h2><p>현상소에서 받은 ZIP을 그대로 열어요. 컷 순서와 번호를 맞추고, 사진을 돌리거나 뒤집어요.</p></article>
+<article class="card"><h2>저장과 공유</h2><p>사진은 JPEG, PNG, WebP로 저장해요. 다른 앱에 공유하거나 여러 컷을 한 장에 모아 볼 수도&nbsp;있어요.</p></article>
+<article class="card"><h2>촬영 정보 남기기</h2><p>카메라와 필름은 롤마다 한 번, 조리개와 셔터 속도는 컷마다 적어요. 사진 아래에 촬영 정보를 붙일지는 직접 골라요.</p></article>
+<article class="card"><h2>가입 없이 사용</h2><p>사진과 촬영 기록은 기기 안에서 처리해요. 개발자 서버로 자동 전송하지 않아요.</p></article>
 </section>
 </main>
 <footer>
