@@ -29,10 +29,12 @@ h1{margin:24px 0 4px;font-size:34px;line-height:1.25;letter-spacing:-.01em}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
 .card h2{margin:0 0 8px;font-size:18px;line-height:1.4;text-wrap:balance}
 .card p{margin:0;color:var(--ink-muted)}
+.card p+p{margin-top:.5em}
 footer{max-width:720px;margin:24px auto 0;padding:24px 20px 48px;border-top:1px solid var(--line);text-align:center;font-size:14px;color:#68736b}
 footer a{color:var(--accent);font-weight:700}
 footer p{margin:6px 0}
-@media (min-width:640px){.features{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{padding-top:72px}h1{font-size:40px}}
+@media (min-width:640px){.hero{padding-top:72px}h1{font-size:40px}}
+@media (min-width:760px){.features{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style></head>
 <body>
 <main>
@@ -48,10 +50,22 @@ footer p{margin:6px 0}
 <p class="status"><span>안드로이드 비공개 테스트 중</span> <span><span class="status-divider" aria-hidden="true">·</span>iOS 출시 예정</span></p>
 </header>
 <section class="features" aria-label="현상후로 할 수 있는 일">
-<article class="card"><h2>스캔 정리</h2><p>현상소에서 받은 ZIP을 그대로 열어요. 컷 순서와 번호를 맞추고, 사진을 돌리거나 뒤집어요.</p></article>
-<article class="card"><h2>저장과 공유</h2><p>사진은 JPEG, PNG, WebP로 저장해요. 다른 앱에 공유하거나 여러 컷을 한 장에 모아 볼 수도&nbsp;있어요.</p></article>
-<article class="card"><h2>촬영 정보 남기기</h2><p>카메라와 필름은 롤마다 한 번, 조리개와 셔터 속도는 컷마다 적어요. 사진 아래에 촬영 정보를 붙일지는 직접 골라요.</p></article>
-<article class="card"><h2>가입 없이 사용</h2><p>사진과 촬영 기록은 기기 안에서 처리해요. 개발자 서버로 자동 전송하지 않아요.</p></article>
+<article class="card"><h2>스캔 정리</h2>
+<p>현상소에서 받은 ZIP을 그대로 열어요.</p>
+<p>컷 순서와 번호를 맞추고, 사진을 돌리거나 뒤집어요.</p>
+</article>
+<article class="card"><h2>저장과 공유</h2>
+<p>사진은 JPEG, PNG, WebP로 저장해요.</p>
+<p>다른 앱에 공유하거나 여러 컷을 한 장에 모아 볼 수도&nbsp;있어요.</p>
+</article>
+<article class="card"><h2>촬영 정보 남기기</h2>
+<p>카메라와 필름은 롤마다 한 번, 조리개와 셔터 속도는 컷마다 적어요.</p>
+<p>사진 아래에 촬영 정보를 붙일지는 직접 골라요.</p>
+</article>
+<article class="card"><h2>가입 없이 사용</h2>
+<p>사진과 촬영 기록은 기기 안에서 처리해요.</p>
+<p>개발자 서버로 자동 전송하지 않아요.</p>
+</article>
 </section>
 </main>
 <footer>
