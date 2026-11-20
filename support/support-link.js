@@ -1,7 +1,7 @@
 // Local-file-compatible production bundle: three waves, image pieces and film chips.
 (() => {
 // User-triggered decoration only; not a payment callback or payment verification.
-const completionCopy = 'Ko-fi로 이동합니다.';
+const completionCopy = 'Buy Me a Coffee로 이동합니다.';
 const motifs = ['cassette','strip','contact','slide','camera','tank','reel','print'];
 const patterns = ['radial','twin','fountain','rain'];
 // Web-trial tokens: accent #526b56, accent-pressed #435a47, warn #9a5b12, mist #e8ece7, plus the app icon's deep green.
