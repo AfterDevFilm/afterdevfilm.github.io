@@ -1,1 +1,210 @@
-import{createZipWriter as e,makeZip as t}from"../adapters/zip.js";import{writePhotoMetadata as o}from"../adapters/exif.js";import{encodeWebp as r,releaseWebpEncoder as n}from"../adapters/webp-encoder.js";import{makeExportFilename as a}from"./export-rules.js";import{evaluateInformationFramePhotoLimit as i,renderInformationFrame as l}from"./information-frame.js";import{correctedPhotoCanvas as s,correctedPhotoDimensions as f,releaseCanvas as c}from"./photo-correction.js";import{decideLevelExportPath as m,normalizePhotoCorrection as p}from"./level-straighten.js";export function effectivePaddingRatio(e,t,o){return e>t&&(o==="4:5"||o==="3:4")?"original":o}export function computePaddingRatioLayout(e,t,o,r=null,n=null){if(!Number.isInteger(e)||!Number.isInteger(t)||e<=0||t<=0)throw new Error("사진 크기는 양의 정수여야 해요.");const a=effectivePaddingRatio(e,t,o);let i=e;let l=t;if(a==="4:5"&&4*t>5*e){const o=Math.floor((4*t-5*e)/8+.5);i=4*Math.ceil((e+2*o)/4);l=5*i/4}else if(a==="3:4"&&3*t>4*e){const o=Math.floor(2*(3*t-4*e)/13+.5);i=3*Math.ceil((e+2*o)/3);l=4*i/3}else if(a==="1:1"&&t>e){const o=Math.floor(2*(t-e)/3+.5);i=e+2*o;l=i}else if(a==="4:5"){const o=Math.max(Math.ceil(e/4),Math.ceil(t/5));i=4*o;l=5*o}else if(a==="3:4"){const o=Math.max(Math.ceil(e/3),Math.ceil(t/4));i=3*o;l=4*o}else if(a==="1:1"){i=l=Math.max(e,t)}else if(a!=="original")throw new Error("내보낼 비율을 고르지 못했어요.");let s=Math.floor((l-t)/2);if(a==="1:1"&&r!==null&&n!==null){if(!Number.isInteger(r)||!Number.isInteger(n)||r<0||n<=0||r+n>t)throw new Error("사진 범위가 블록 안에 있어야 해요.");s=Math.min(Math.max(Math.floor((l-n)/2)-r,0),l-t)}return{canvasWidth:i,canvasHeight:l,x:Math.floor((i-e)/2),y:s}}export function applyPaddingRatioCanvas(e,t,o=null,r=null){if(effectivePaddingRatio(e.width,e.height,t)==="original")return e;const n=computePaddingRatioLayout(e.width,e.height,t,o,r);const a=document.createElement("canvas");a.width=n.canvasWidth;a.height=n.canvasHeight;const i=a.getContext("2d",{alpha:false});i.fillStyle="white";i.fillRect(0,0,a.width,a.height);i.drawImage(e,n.x,n.y);return a}export function applyPaddingRatioFilename(e,t,o=null,r=null){const n=o!==null&&r!==null?effectivePaddingRatio(o,r,t):t;if(n==="original")return e;const a={"4:5":"_4x5","3:4":"_3x4","1:1":"_1x1"}[n];if(!a)throw new Error("내보낼 비율을 고르지 못했어요.");const i=e.lastIndexOf(".");return i>0?`${e.slice(0,i)}${a}${e.slice(i)}`:`${e}${a}`}function u(e,t){return e.format==="png"?e.bytes:o(e.bytes,t)}export function exportPhotoZip(e,o="roll"){const r=e.map(e=>{const t=e.format??"jpeg";const r=t==="png"?"png":"jpg";const n=a({roll:o,frame:e.frame,width:2,includeCut:false,cut:null,mode:"off",ext:r});if(n.result!=="name")throw new Error("내보낼 파일 이름을 만들지 못했어요.");const i={...e.record,roll:e.record.rollNumber??o,frame:e.frame};const l=u(e,i);return{name:n.name,bytes:l}});return{bytes:t(r),files:r}}export async function exportFramedPhotoZip(e,r,n){const s=[];const f=[];for(const t of e){const e=i(t).allowed;const c=e||t.format!=="png"?"jpg":"png";const m=a({roll:r,frame:t.frame,width:2,includeCut:false,cut:null,mode:e?n:"off",ext:c});if(m.result!=="name")throw new Error("내보낼 파일 이름을 만들지 못했어요.");const p={...t.record,roll:t.record.rollNumber??r,frame:t.frame};if(!e){s.push({name:m.name,bytes:u(t,p)});f.push(t.frame);continue}const h=await l(t,p,n,t.frame,.85);s.push({name:m.name,bytes:o(h.bytes,p)})}return{bytes:t(s),files:s,photoOnlyFrames:f}}async function h(e,t,o,n){if(t==="image/webp"){const t=e.getContext("2d",{willReadFrequently:true}).getImageData(0,0,e.width,e.height).data;return r(t,e.width,e.height,{quality:o,lossless:n})}return new Promise((r,n)=>e.toBlob(async e=>{if(!e||e.type!==t){n(new Error("사진 파일을 만들지 못했어요."));return}r(new Uint8Array(await e.arrayBuffer()))},t,o))}export async function exportConfiguredZip(t,{rollName:r="roll",mode:d="off",format:g="jpeg",quality:w=.85,lossless:y=false,width:b=2,includeCut:x=false,rollFrameLabel:j=false,rgbHistogram:R=false,paddingRatio:M="original"}={}){try{const n={jpeg:"image/jpeg",webp:"image/webp",png:"image/png"}[g];const v={jpeg:"jpg",webp:"webp",png:"png"}[g];if(!n)throw new Error("내보낼 사진 형식을 고르지 못했어요.");const P=e();const E=[];const C=[];for(const e of t){const t={...e.record,...e.date!==undefined?{date:e.date}:{},roll:e.record.rollNumber??r,frame:e.frame};const F=d==="off"||i(e).allowed;const N=F?d:"off";if(!F)C.push(e.frame);const I=a({roll:r,frame:e.frame,width:b,includeCut:x,cut:e.cutName||null,mode:N,ext:v});if(I.result!=="name")throw new Error("내보낼 파일 이름을 만들지 못했어요.");let L;let B=I.name;let U=f(e.width,e.height,e.correction);const A=p(e.correction);const O=A.turns%4===0&&!A.flipped;const $=m({outputFormat:g==="jpeg"?"JPEG":g.toUpperCase(),informationFrame:N!=="off",existingRouteAEligible:e.format!=="png"&&O,levelAngle:A.levelAngle});if($.route==="A"){L=u(e,t)}else{const r=[];try{const o=N==="off"?null:await l(e,t,N,e.frame,w,j,R);let a=N==="off"?await s(e):o.canvas;r.push(a);if(N!=="off"){const e=a.width;const t=a.height;a=applyPaddingRatioCanvas(a,M,o.geometry.photoY,o.geometry.photoHeight);if(!r.includes(a))r.push(a);B=applyPaddingRatioFilename(B,M,e,t)}U={width:a.width,height:a.height};L=await h(a,n,w,y)}finally{for(const e of r)c(e)}if(g==="jpeg")L=o(L,t)}P.add(B,L);E.push({name:B,type:n,blob:new Blob([L],{type:n}),size:L.length,...U})}return{zip:P.finish(),files:E,photoOnlyFrames:C}}finally{n()}}export function downloadBytes(e,t,o="application/zip"){const r=URL.createObjectURL(e instanceof Blob?e:new Blob([e],{type:o}));const n=document.createElement("a");n.href=r;n.download=t;n.click();setTimeout(()=>URL.revokeObjectURL(r),0)}
+import { createZipWriter, makeZip } from "../adapters/zip.js";
+import { writePhotoMetadata } from "../adapters/exif.js";
+import { encodeWebp, releaseWebpEncoder } from "../adapters/webp-encoder.js";
+import { makeExportFilename } from "./export-rules.js";
+import { evaluateInformationFramePhotoLimit, renderInformationFrame } from "./information-frame.js";
+import { correctedPhotoCanvas, correctedPhotoDimensions, releaseCanvas } from "./photo-correction.js";
+import { decideLevelExportPath, normalizePhotoCorrection } from "./level-straighten.js";
+
+export function effectivePaddingRatio(blockWidth, blockHeight, ratio) {
+  return blockWidth > blockHeight && (ratio === "4:5" || ratio === "3:4") ? "original" : ratio;
+}
+
+export function computePaddingRatioLayout(blockWidth, blockHeight, ratio, photoY = null, photoHeight = null) {
+  if (!Number.isInteger(blockWidth) || !Number.isInteger(blockHeight) || blockWidth <= 0 || blockHeight <= 0) throw new Error("사진 크기는 양의 정수여야 해요.");
+  const appliedRatio = effectivePaddingRatio(blockWidth, blockHeight, ratio);
+  let canvasWidth = blockWidth;
+  let canvasHeight = blockHeight;
+  if (appliedRatio === "4:5" && 4 * blockHeight > 5 * blockWidth) {
+    const s = Math.floor((4 * blockHeight - 5 * blockWidth) / 8 + 0.5);
+    canvasWidth = 4 * Math.ceil((blockWidth + 2 * s) / 4);
+    canvasHeight = 5 * canvasWidth / 4;
+  } else if (appliedRatio === "3:4" && 3 * blockHeight > 4 * blockWidth) {
+    const s = Math.floor(2 * (3 * blockHeight - 4 * blockWidth) / 13 + 0.5);
+    canvasWidth = 3 * Math.ceil((blockWidth + 2 * s) / 3);
+    canvasHeight = 4 * canvasWidth / 3;
+  } else if (appliedRatio === "1:1" && blockHeight > blockWidth) {
+    const s = Math.floor(2 * (blockHeight - blockWidth) / 3 + 0.5);
+    canvasWidth = blockWidth + 2 * s;
+    canvasHeight = canvasWidth;
+  } else if (appliedRatio === "4:5") {
+    const unit = Math.max(Math.ceil(blockWidth / 4), Math.ceil(blockHeight / 5));
+    canvasWidth = 4 * unit;
+    canvasHeight = 5 * unit;
+  } else if (appliedRatio === "3:4") {
+    const unit = Math.max(Math.ceil(blockWidth / 3), Math.ceil(blockHeight / 4));
+    canvasWidth = 3 * unit;
+    canvasHeight = 4 * unit;
+  } else if (appliedRatio === "1:1") {
+    canvasWidth = canvasHeight = Math.max(blockWidth, blockHeight);
+  } else if (appliedRatio !== "original") throw new Error("내보낼 비율을 고르지 못했어요.");
+  let y = Math.floor((canvasHeight - blockHeight) / 2);
+  if (appliedRatio === "1:1" && photoY !== null && photoHeight !== null) {
+    if (!Number.isInteger(photoY) || !Number.isInteger(photoHeight) || photoY < 0 || photoHeight <= 0 || photoY + photoHeight > blockHeight) throw new Error("사진 범위가 블록 안에 있어야 해요.");
+    y = Math.min(Math.max(Math.floor((canvasHeight - photoHeight) / 2) - photoY, 0), canvasHeight - blockHeight);
+  }
+  return { canvasWidth, canvasHeight, x: Math.floor((canvasWidth - blockWidth) / 2), y };
+}
+
+export function applyPaddingRatioCanvas(block, ratio, photoY = null, photoHeight = null) {
+  if (effectivePaddingRatio(block.width, block.height, ratio) === "original") return block;
+  const layout = computePaddingRatioLayout(block.width, block.height, ratio, photoY, photoHeight);
+  const canvas = document.createElement("canvas");
+  canvas.width = layout.canvasWidth;
+  canvas.height = layout.canvasHeight;
+  const context = canvas.getContext("2d", { alpha: false });
+  context.fillStyle = "white";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(block, layout.x, layout.y);
+  return canvas;
+}
+
+export function applyPaddingRatioFilename(name, ratio, blockWidth = null, blockHeight = null) {
+  const appliedRatio = blockWidth !== null && blockHeight !== null ? effectivePaddingRatio(blockWidth, blockHeight, ratio) : ratio;
+  if (appliedRatio === "original") return name;
+  const suffix = { "4:5": "_4x5", "3:4": "_3x4", "1:1": "_1x1" }[appliedRatio];
+  if (!suffix) throw new Error("내보낼 비율을 고르지 못했어요.");
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? `${name.slice(0, dot)}${suffix}${name.slice(dot)}` : `${name}${suffix}`;
+}
+
+function metadataOnlyBytes(item, metadata) {
+  return item.format === "png" ? item.bytes : writePhotoMetadata(item.bytes, metadata);
+}
+
+export function exportPhotoZip(items, rollName = "roll") {
+  const files = items.map((item) => {
+    const format = item.format ?? "jpeg";
+    const extension = format === "png" ? "png" : "jpg";
+    const nameResult = makeExportFilename({
+      roll: rollName,
+      frame: item.frame,
+      width: 2,
+      includeCut: false,
+      cut: null,
+      mode: "off",
+      ext: extension,
+    });
+    if (nameResult.result !== "name") throw new Error("내보낼 파일 이름을 만들지 못했어요.");
+    const metadata = { ...item.record, roll: item.record.rollNumber ?? rollName, frame: item.frame };
+    const bytes = metadataOnlyBytes(item, metadata);
+    return { name: nameResult.name, bytes };
+  });
+  return { bytes: makeZip(files), files };
+}
+
+export async function exportFramedPhotoZip(items, rollName, mode) {
+  const files = [];
+  const photoOnlyFrames = [];
+  for (const item of items) {
+    const frameAllowed = evaluateInformationFramePhotoLimit(item).allowed;
+    const extension = frameAllowed || item.format !== "png" ? "jpg" : "png";
+    const nameResult = makeExportFilename({
+      roll: rollName, frame: item.frame, width: 2, includeCut: false, cut: null,
+      mode: frameAllowed ? mode : "off", ext: extension,
+    });
+    if (nameResult.result !== "name") throw new Error("내보낼 파일 이름을 만들지 못했어요.");
+    const metadata = { ...item.record, roll: item.record.rollNumber ?? rollName, frame: item.frame };
+    if (!frameAllowed) {
+      files.push({ name: nameResult.name, bytes: metadataOnlyBytes(item, metadata) });
+      photoOnlyFrames.push(item.frame);
+      continue;
+    }
+    const rendered = await renderInformationFrame(item, metadata, mode, item.frame, 0.85);
+    files.push({ name: nameResult.name, bytes: writePhotoMetadata(rendered.bytes, metadata) });
+  }
+  return { bytes: makeZip(files), files, photoOnlyFrames };
+}
+
+async function canvasBytes(canvas, type, quality, lossless) {
+  if (type === "image/webp") {
+    const rgba = canvas.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height).data;
+    return encodeWebp(rgba, canvas.width, canvas.height, { quality, lossless });
+  }
+  return new Promise((resolve, reject) => canvas.toBlob(async (blob) => {
+    if (!blob || blob.type !== type) {
+      reject(new Error("사진 파일을 만들지 못했어요."));
+      return;
+    }
+    resolve(new Uint8Array(await blob.arrayBuffer()));
+  }, type, quality));
+}
+
+/**
+ * The browser export screen's real ZIP output. It keeps JPEG photo-only bytes when possible and uses Canvas only for
+ * a requested conversion or frame. Each file goes into the ZIP as soon as it exists and is kept only as a Blob
+ * (`blob`, `size`) for the result screen; every canvas is released right after its bytes are made.
+ * Returns `{ zip: Blob, files, photoOnlyFrames }`.
+ */
+export async function exportConfiguredZip(items, {
+  rollName = "roll", mode = "off", format = "jpeg", quality = 0.85, lossless = false, width = 2,
+  includeCut = false, rollFrameLabel = false, rgbHistogram = false, paddingRatio = "original",
+} = {}) {
+  try {
+    const type = { jpeg: "image/jpeg", webp: "image/webp", png: "image/png" }[format];
+    const extension = { jpeg: "jpg", webp: "webp", png: "png" }[format];
+    if (!type) throw new Error("내보낼 사진 형식을 고르지 못했어요.");
+    const writer = createZipWriter();
+    const files = [];
+    const photoOnlyFrames = [];
+    for (const item of items) {
+      const metadata = { ...item.record, ...(item.date !== undefined ? { date: item.date } : {}), roll: item.record.rollNumber ?? rollName, frame: item.frame };
+      const frameAllowed = mode === "off" || evaluateInformationFramePhotoLimit(item).allowed;
+      const actualMode = frameAllowed ? mode : "off";
+      if (!frameAllowed) photoOnlyFrames.push(item.frame);
+      const nameResult = makeExportFilename({
+        roll: rollName, frame: item.frame, width, includeCut, cut: item.cutName || null,
+        mode: actualMode, ext: extension,
+      });
+      if (nameResult.result !== "name") throw new Error("내보낼 파일 이름을 만들지 못했어요.");
+
+      let bytes;
+      let outputName = nameResult.name;
+      let shown = correctedPhotoDimensions(item.width, item.height, item.correction);
+      const correction = normalizePhotoCorrection(item.correction);
+      const unchanged = correction.turns % 4 === 0 && !correction.flipped;
+      const exportPath = decideLevelExportPath({
+        outputFormat: format === "jpeg" ? "JPEG" : format.toUpperCase(),
+        informationFrame: actualMode !== "off",
+        existingRouteAEligible: item.format !== "png" && unchanged,
+        levelAngle: correction.levelAngle,
+      });
+      if (exportPath.route === "A") {
+        bytes = metadataOnlyBytes(item, metadata);
+      } else {
+        const made = [];
+        try {
+          const rendered = actualMode === "off" ? null : await renderInformationFrame(item, metadata, actualMode, item.frame, quality, rollFrameLabel, rgbHistogram);
+          let canvas = actualMode === "off" ? await correctedPhotoCanvas(item) : rendered.canvas;
+          made.push(canvas);
+          if (actualMode !== "off") {
+            const blockWidth = canvas.width;
+            const blockHeight = canvas.height;
+            canvas = applyPaddingRatioCanvas(canvas, paddingRatio, rendered.geometry.photoY, rendered.geometry.photoHeight);
+            if (!made.includes(canvas)) made.push(canvas);
+            outputName = applyPaddingRatioFilename(outputName, paddingRatio, blockWidth, blockHeight);
+          }
+          shown = { width: canvas.width, height: canvas.height };
+          bytes = await canvasBytes(canvas, type, quality, lossless);
+        } finally {
+          for (const canvas of made) releaseCanvas(canvas);
+        }
+        if (format === "jpeg") bytes = writePhotoMetadata(bytes, metadata);
+      }
+      writer.add(outputName, bytes);
+      files.push({ name: outputName, type, blob: new Blob([bytes], { type }), size: bytes.length, ...shown });
+    }
+    return { zip: writer.finish(), files, photoOnlyFrames };
+  } finally {
+    releaseWebpEncoder();
+  }
+}
+
+export function downloadBytes(bytes, name, type = "application/zip") {
+  const url = URL.createObjectURL(bytes instanceof Blob ? bytes : new Blob([bytes], { type }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}

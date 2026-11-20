@@ -1,1 +1,131 @@
-const e=new TextEncoder;const r=new TextDecoder;const t=e.encode("http://ns.adobe.com/xap/1.0/\0");const n="https://w3id.org/afterdev/xmp/1.0/";const o=["FilmStock","FilmManufacturer","BoxSpeed","ExposureIndex","FocalLength","Aperture","Shutter","ExposureCompensation","DevelopmentProcess","Lab","Roll","FrameNumber","ShootingDate","ScanDeviceMake","ScanDeviceModel"];function a(e){const r=e.reduce((e,r)=>e+r.length,0);const t=new Uint8Array(r);let n=0;for(const r of e){t.set(r,n);n+=r.length}return t}function s(e){if(e.length<t.length)return false;return t.every((r,t)=>e[t]===r)}function c(e){return e.length>=6&&r.decode(e.subarray(0,6))==="Exif\0\0"}function l(e){return e.length>=5&&r.decode(e.subarray(0,5))==="JFIF\0"}function u(e,r){if(r+4>e.length||e[r]!==255)return null;const t=e[r+1];if(t===218||t===217)return null;const n=e[r+2]<<8|e[r+3];const o=r+n+2;if(n<2||o>e.length)throw new Error("JPEG 구간이 잘렸어요.");return{marker:t,end:o,payload:e.subarray(r+4,o),bytes:e.subarray(r,o)}}function i(e){const r=u(e,2);const t=r&&u(e,r.end);if(!r||!t||r.marker!==225||!c(r.payload)||t.marker!==224||!l(t.payload)){return e}return a([e.subarray(0,2),t.bytes,r.bytes,e.subarray(t.end)])}export function stripMetadataSegments(e){if(e[0]!==255||e[1]!==216)throw new Error("JPEG 시작 표식이 없어요.");const r=[e.subarray(0,2)];let t=2;while(t+4<=e.length){if(e[t]!==255)throw new Error("JPEG 구간 표식이 잘못됐어요.");const n=e[t+1];if(n===218||n===217){r.push(e.subarray(t));return a(r)}const o=e[t+2]<<8|e[t+3];if(o<2||t+o+2>e.length)throw new Error("JPEG 구간이 잘렸어요.");const l=e.subarray(t,t+o+2);const u=e.subarray(t+4,t+o+2);if(!(n===225&&(c(u)||s(u))))r.push(l);t+=o+2}throw new Error("JPEG 이미지 데이터가 없어요.")}export function insertXmp(r,s){r=i(r);const l=o.map(e=>[e,s[e]]).filter(([,e])=>e!==null&&e!==undefined&&String(e).trim()!=="").map(([e,r])=>[e,String(r).trim()]);if(!l.length)return r;const u=e=>e.replaceAll("&","&amp;").replaceAll("\"","&quot;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll("'","&apos;");const f=l.map(([e,r])=>`      afterdev:${e}="${u(r)}"`).join("\n");const d=["<?xpacket begin=\"\ufeff\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>","<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">","  <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">",`    <rdf:Description rdf:about=""\n      xmlns:afterdev="${n}"\n${f}/>`,"  </rdf:RDF>","</x:xmpmeta>","<?xpacket end=\"w\"?>"].join("\n");const p=a([t,e.encode(d)]);const h=p.length+2;if(h>65535)throw new Error("XMP 촬영 정보가 너무 길어요.");const m=a([new Uint8Array([255,225,h>>8,h&255]),p]);let w=2;let b=2;let g=null;while(w+4<=r.length&&r[w]===255){const e=r[w+1];if(e===218||e===217)break;const t=r[w+2]<<8|r[w+3];const n=w+t+2;if(t<2||n>r.length)throw new Error("JPEG 구간이 잘렸어요.");const o=r.subarray(w+4,n);if(e===224&&w===2)b=n;if(e===225&&c(o))g=n;w=n}b=g??b;return a([r.subarray(0,b),m,r.subarray(b)])}export function extractXmpText(e){let n=2;while(n+4<=e.length&&e[n]===255){const o=e[n+1];if(o===218||o===217)break;const a=e[n+2]<<8|e[n+3];const c=e.subarray(n+4,n+a+2);if(o===225&&s(c))return r.decode(c.subarray(t.length));n+=a+2}return null}
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+const xmpHeader = encoder.encode("http://ns.adobe.com/xap/1.0/\0");
+const afterdevNamespace = "https://w3id.org/afterdev/xmp/1.0/";
+const afterdevFields = [
+  "FilmStock", "FilmManufacturer", "BoxSpeed", "ExposureIndex", "FocalLength", "Aperture", "Shutter",
+  "ExposureCompensation", "DevelopmentProcess", "Lab", "Roll", "FrameNumber", "ShootingDate",
+  "ScanDeviceMake", "ScanDeviceModel",
+];
+
+function concat(parts) {
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(length);
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.length;
+  }
+  return output;
+}
+
+function isXmp(payload) {
+  if (payload.length < xmpHeader.length) return false;
+  return xmpHeader.every((value, index) => payload[index] === value);
+}
+
+function isExif(payload) {
+  return payload.length >= 6 && decoder.decode(payload.subarray(0, 6)) === "Exif\0\0";
+}
+
+function isJfif(payload) {
+  return payload.length >= 5 && decoder.decode(payload.subarray(0, 5)) === "JFIF\0";
+}
+
+function segmentAt(bytes, offset) {
+  if (offset + 4 > bytes.length || bytes[offset] !== 0xff) return null;
+  const marker = bytes[offset + 1];
+  if (marker === 0xda || marker === 0xd9) return null;
+  const length = (bytes[offset + 2] << 8) | bytes[offset + 3];
+  const end = offset + length + 2;
+  if (length < 2 || end > bytes.length) throw new Error("JPEG 구간이 잘렸어요.");
+  return { marker, end, payload: bytes.subarray(offset + 4, end), bytes: bytes.subarray(offset, end) };
+}
+
+function orderLeadingExifAfterJfif(bytes) {
+  const first = segmentAt(bytes, 2);
+  const second = first && segmentAt(bytes, first.end);
+  if (!first || !second || first.marker !== 0xe1 || !isExif(first.payload) || second.marker !== 0xe0 || !isJfif(second.payload)) {
+    return bytes;
+  }
+  return concat([bytes.subarray(0, 2), second.bytes, first.bytes, bytes.subarray(second.end)]);
+}
+
+export function stripMetadataSegments(bytes) {
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new Error("JPEG 시작 표식이 없어요.");
+  const kept = [bytes.subarray(0, 2)];
+  let offset = 2;
+  while (offset + 4 <= bytes.length) {
+    if (bytes[offset] !== 0xff) throw new Error("JPEG 구간 표식이 잘못됐어요.");
+    const marker = bytes[offset + 1];
+    if (marker === 0xda || marker === 0xd9) {
+      kept.push(bytes.subarray(offset));
+      return concat(kept);
+    }
+    const length = (bytes[offset + 2] << 8) | bytes[offset + 3];
+    if (length < 2 || offset + length + 2 > bytes.length) throw new Error("JPEG 구간이 잘렸어요.");
+    const segment = bytes.subarray(offset, offset + length + 2);
+    const payload = bytes.subarray(offset + 4, offset + length + 2);
+    if (!(marker === 0xe1 && (isExif(payload) || isXmp(payload)))) kept.push(segment);
+    offset += length + 2;
+  }
+  throw new Error("JPEG 이미지 데이터가 없어요.");
+}
+
+export function insertXmp(bytes, fields) {
+  bytes = orderLeadingExifAfterJfif(bytes);
+  const pairs = afterdevFields
+    .map((name) => [name, fields[name]])
+    .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== "")
+    .map(([name, value]) => [name, String(value).trim()]);
+  if (!pairs.length) return bytes;
+  const xmlEscape = (value) => value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("'", "&apos;");
+  const attributes = pairs.map(([name, value]) => `      afterdev:${name}="${xmlEscape(value)}"`).join("\n");
+  const packet = [
+    '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>',
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/">',
+    '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
+    `    <rdf:Description rdf:about=""\n      xmlns:afterdev="${afterdevNamespace}"\n${attributes}/>`,
+    "  </rdf:RDF>",
+    "</x:xmpmeta>",
+    '<?xpacket end="w"?>',
+  ].join("\n");
+  const body = concat([xmpHeader, encoder.encode(packet)]);
+  const length = body.length + 2;
+  if (length > 65535) throw new Error("XMP 촬영 정보가 너무 길어요.");
+  const segment = concat([new Uint8Array([0xff, 0xe1, length >> 8, length & 0xff]), body]);
+  let offset = 2;
+  let insertionOffset = 2;
+  let exifEnd = null;
+  while (offset + 4 <= bytes.length && bytes[offset] === 0xff) {
+    const marker = bytes[offset + 1];
+    if (marker === 0xda || marker === 0xd9) break;
+    const segmentLength = (bytes[offset + 2] << 8) | bytes[offset + 3];
+    const end = offset + segmentLength + 2;
+    if (segmentLength < 2 || end > bytes.length) throw new Error("JPEG 구간이 잘렸어요.");
+    const payload = bytes.subarray(offset + 4, end);
+    if (marker === 0xe0 && offset === 2) insertionOffset = end;
+    if (marker === 0xe1 && isExif(payload)) exifEnd = end;
+    offset = end;
+  }
+  insertionOffset = exifEnd ?? insertionOffset;
+  return concat([bytes.subarray(0, insertionOffset), segment, bytes.subarray(insertionOffset)]);
+}
+
+export function extractXmpText(bytes) {
+  let offset = 2;
+  while (offset + 4 <= bytes.length && bytes[offset] === 0xff) {
+    const marker = bytes[offset + 1];
+    if (marker === 0xda || marker === 0xd9) break;
+    const length = (bytes[offset + 2] << 8) | bytes[offset + 3];
+    const payload = bytes.subarray(offset + 4, offset + length + 2);
+    if (marker === 0xe1 && isXmp(payload)) return decoder.decode(payload.subarray(xmpHeader.length));
+    offset += length + 2;
+  }
+  return null;
+}

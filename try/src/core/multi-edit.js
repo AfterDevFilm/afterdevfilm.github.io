@@ -1,1 +1,100 @@
-const e={date:"촬영일을",camera:"카메라를",lens:"렌즈를",focal:"초점거리(mm)를",ap:"조리개를",sh:"셔터를",ev:"노출 보정을",film:"필름을",maker:"필름 제조사를",boxSpeed:"박스 감도를",ei:"노출 지수(EI)를",process:"현상 방식을",lab:"현상소를",rollNumber:"롤 번호를"};function t(e){const t=String(e??"").trim();return t||null}export function planBulkShootingInfo(n,o,r=false){const s=Object.entries(o).map(([e,n])=>[e,t(n)]).filter(([,e])=>e!==null);const c={};let l=0;for(const[e,o]of Object.entries(n)){const n=s.filter(([e,n])=>{const r=t(o[e]);return r!==null&&r!==n});if(n.length)l+=1;const u={};for(const[e,n]of s){const s=t(o[e]);if(s===n)continue;if(s===null||r)u[e]=n}if(Object.keys(u).length)c[e]=u}const u=Object.keys(c).length;const i=s.length===1?`${u}컷에 ${e[s[0][0]]??"값을"} 넣었어요.`:`${u}컷에 촬영 정보를 넣었어요.`;return{assignments:c,collisionCutCount:l,changedCutCount:u,resultText:i}}export function renumberByOrder(e){return e.map((e,t)=>({...e,frame:t+1}))}export function renumberSelection(e,t,n){const o=new Set(t);let r=n;return e.map(e=>o.has(e.cut)?{...e,frame:r++}:{...e})}export function shiftSelection(e,t,n){const o=new Set(t);const r=e.map(e=>o.has(e.cut)?{...e,frame:e.frame+n}:{...e});const s=r.map(({frame:e})=>e);if(s.some(e=>!Number.isInteger(e)||e<1)||new Set(s).size!==s.length)return null;return r}export function selectionIsContiguous(e,t){if(!t.length||new Set(t).size!==t.length)return false;const n=new Set(t);const o=e.map(({cut:e},t)=>n.has(e)?t:-1).filter(e=>e>=0);if(o.length!==n.size)return false;return o.every((e,t)=>e===o[0]+t)}export function reverseSelection(e,t=null){const n=t===null?e.map(({cut:e})=>e):t;if(!selectionIsContiguous(e,n))return null;const o=new Set(n);const r=e.map(({cut:e},t)=>o.has(e)?t:-1).filter(e=>e>=0);const s=r.map(t=>e[t].frame);const c=r.map(t=>e[t].cut).reverse();const l=e.map(e=>({...e}));r.forEach((e,t)=>{l[e]={cut:c[t],frame:s[t]}});return l}export function moveSelection(e,t,n){const o=new Set(t);const r=e.filter(({cut:e})=>o.has(e));const s=e.filter(({cut:e})=>!o.has(e));const c=Math.max(0,Math.min(n,s.length));return[...s.slice(0,c),...r,...s.slice(c)].map(e=>({...e}))}
+const FIELD_OUTPUT = {
+  date: "촬영일을",
+  camera: "카메라를",
+  lens: "렌즈를",
+  focal: "초점거리(mm)를",
+  ap: "조리개를",
+  sh: "셔터를",
+  ev: "노출 보정을",
+  film: "필름을",
+  maker: "필름 제조사를",
+  boxSpeed: "박스 감도를",
+  ei: "노출 지수(EI)를",
+  process: "현상 방식을",
+  lab: "현상소를",
+  rollNumber: "롤 번호를",
+};
+
+function normalized(value) {
+  const text = String(value ?? "").trim();
+  return text || null;
+}
+
+export function planBulkShootingInfo(shownByCut, entered, replaceExisting = false) {
+  const entries = Object.entries(entered)
+    .map(([field, value]) => [field, normalized(value)])
+    .filter(([, value]) => value !== null);
+  const assignments = {};
+  let collisionCutCount = 0;
+
+  for (const [cutId, shown] of Object.entries(shownByCut)) {
+    const collisions = entries.filter(([field, value]) => {
+      const current = normalized(shown[field]);
+      return current !== null && current !== value;
+    });
+    if (collisions.length) collisionCutCount += 1;
+    const changes = {};
+    for (const [field, value] of entries) {
+      const current = normalized(shown[field]);
+      if (current === value) continue;
+      if (current === null || replaceExisting) changes[field] = value;
+    }
+    if (Object.keys(changes).length) assignments[cutId] = changes;
+  }
+
+  const changedCutCount = Object.keys(assignments).length;
+  const resultText = entries.length === 1
+    ? `${changedCutCount}컷에 ${FIELD_OUTPUT[entries[0][0]] ?? "값을"} 넣었어요.`
+    : `${changedCutCount}컷에 촬영 정보를 넣었어요.`;
+  return { assignments, collisionCutCount, changedCutCount, resultText };
+}
+
+export function renumberByOrder(positions) {
+  return positions.map((position, index) => ({ ...position, frame: index + 1 }));
+}
+
+export function renumberSelection(order, selected, startingAt) {
+  const chosen = new Set(selected);
+  let next = startingAt;
+  return order.map((position) => chosen.has(position.cut)
+    ? { ...position, frame: next++ }
+    : { ...position });
+}
+
+export function shiftSelection(order, selected, amount) {
+  const chosen = new Set(selected);
+  const shifted = order.map((position) => chosen.has(position.cut)
+    ? { ...position, frame: position.frame + amount }
+    : { ...position });
+  const frames = shifted.map(({ frame }) => frame);
+  if (frames.some((frame) => !Number.isInteger(frame) || frame < 1) || new Set(frames).size !== frames.length) return null;
+  return shifted;
+}
+
+export function selectionIsContiguous(order, selected) {
+  if (!selected.length || new Set(selected).size !== selected.length) return false;
+  const chosen = new Set(selected);
+  const indexes = order.map(({ cut }, index) => chosen.has(cut) ? index : -1).filter((index) => index >= 0);
+  if (indexes.length !== chosen.size) return false;
+  return indexes.every((index, offset) => index === indexes[0] + offset);
+}
+
+export function reverseSelection(order, selected = null) {
+  const chosen = selected === null ? order.map(({ cut }) => cut) : selected;
+  if (!selectionIsContiguous(order, chosen)) return null;
+  const chosenSet = new Set(chosen);
+  const indexes = order.map(({ cut }, index) => chosenSet.has(cut) ? index : -1).filter((index) => index >= 0);
+  const frames = indexes.map((index) => order[index].frame);
+  const reversedCuts = indexes.map((index) => order[index].cut).reverse();
+  const result = order.map((position) => ({ ...position }));
+  indexes.forEach((index, offset) => { result[index] = { cut: reversedCuts[offset], frame: frames[offset] }; });
+  return result;
+}
+
+export function moveSelection(order, selected, destinationIndex) {
+  const chosen = new Set(selected);
+  const moving = order.filter(({ cut }) => chosen.has(cut));
+  const remaining = order.filter(({ cut }) => !chosen.has(cut));
+  const index = Math.max(0, Math.min(destinationIndex, remaining.length));
+  return [...remaining.slice(0, index), ...moving, ...remaining.slice(index)].map((position) => ({ ...position }));
+}

@@ -1,1 +1,2393 @@
-import{cutNameRejectionLines as e}from"./core/cut-name-rejection-notice.js";import{readPhotoZipBlob as t,zipLimitMessageLines as n,WEB_ZIP_LIMITS as o,ZIP_ERROR_KIND_LIMIT as r}from"./adapters/zip.js";import{cleanShootingDate as a,parseCsvRecord as l,parseMarkdownRecord as i,recordUnreadEntries as c,unknownColumnsLine as s}from"./core/record.js";import{decodeTemplateBytes as d}from"./core/record-decode.js";import{matchCutsToPhotos as u,recordsByNumber as m}from"./core/match.js";import{applyPaddingRatioCanvas as f,downloadBytes as p,exportConfiguredZip as g}from"./core/export.js";import{ROLL_NAME_RESERVED_MESSAGE as h,checkRollName as b,compactNumbers as k,groupExcludedLines as y,makeExportArchiveFilename as v}from"./core/export-rules.js";import{evaluateInformationFramePhotoLimit as x,renderInformationFrame as w,showsRGBHistogramControl as E}from"./core/information-frame.js";import{defaultRollName as C}from"./core/default-roll-name.js";import{newZipRollState as S}from"./core/new-zip-roll-state.js";import{resolveCutField as L,resolveCutRecord as A}from"./core/roll-values.js";import{groupShareFiles as M,makeShareFiles as I}from"./core/share.js";import{shownPhotoDimensions as j}from"./core/image-format.js";import{JPEG_COMPLETENESS as N,judgeJpegCompleteness as R}from"./core/jpeg-completeness.js";import{SCAN_REPLACED_MESSAGE as F,SCAN_REPLACEMENT_READ_FAILURE as q,SCAN_UNREADABLE_MESSAGE as $,applyScanReplacement as T,stageScanReplacement as O}from"./core/scan-replacement.js";import{normalizeBulb as B,parseManualRollFocalLength as D,sharedCopy as P,shouldShowExifReason as z}from"./core/value-rules.js";import{acceptsDecimalFieldEdit as V,prepareApertureInput as Q}from"./core/decimal-input-filter.js";import{INTEGER_INPUT_LABELS as H,prepareIntegerFieldInput as _}from"./core/integer-input.js";import{inputSuggestionAsk as U}from"./core/input-suggestion.js";import{moveSelection as K,planBulkShootingInfo as G,renumberByOrder as W,renumberSelection as Z,reverseSelection as J,selectionIsContiguous as Y,shiftSelection as X}from"./core/multi-edit.js";import{contactSheetBlob as ee,evaluateContactSheetLimit as te,renderContactSheet as ne}from"./core/contact-sheet.js";import{webpEncoderReady as oe}from"./adapters/webp-encoder.js";import{TEMPLATE_ROLL_FIELDS as re,replaceRecordCutName as ae,rollMissingNumberLine as le,templateConfirmationNoticeLines as ie,templateCutLine as ce}from"./core/template-import.js";import{SHOOTING_DATE_PROVENANCE as se,reprojectProviderShootingDates as de}from"./core/shooting-date-renumber.js";import{ThumbnailBitmapCache as ue,makeThumbnailBitmap as me,renderCachedThumbnail as fe}from"./core/thumbnail-cache.js";import{BULK_STEP_NUMBER_CONFLICT_MESSAGE as pe,FRAME_NUMBER_HELPER as ge,evaluateBulkStepNumbers as he,evaluateFrameNumberEdit as be,frameNumberMessage as ke}from"./core/frame-number-edit.js";import{evaluateMoveAfterNumber as ye,MOVE_AFTER_NUMBER_MAX as ve}from"./core/move-after-number.js";import{defaultPhotoCorrection as xe,flipPhotoCorrection as we,normalizePhotoCorrection as Ee,rotatePhotoCorrection as Ce}from"./core/level-straighten.js";import{correctedPhotoCanvas as Se,releaseCanvas as Le}from"./core/photo-correction.js";import{UPDATE_NOTE as Ae}from"./core/update-note.js";document.querySelector("#update-note").textContent=`${Ae.date} ${Ae.text}`;const Me="2026-09-27처럼 올바른 날짜를 입력해 주세요.";const Ie="2026-09-27처럼 입력해요. 스캔 파일의 날짜는 쓰지 않아요.";const je="2024-05-17";const Ne=[{key:"camera",label:"카메라",recent:true,placeholder:"예: Nikon FM2"},{key:"lens",label:"렌즈",recent:true},{key:"focal",label:"초점거리(mm)",placeholder:"숫자만 입력",reason:"focal"},{key:"ap",label:"조리개",cutOnly:true,reason:"aperture"},{key:"sh",label:"셔터",cutOnly:true,reason:"shutter"},{key:"ev",label:"노출 보정",cutOnly:true},{key:"film",label:"필름",recent:true},{key:"maker",label:"필름 제조사",recent:true},{key:"boxSpeed",label:"박스 감도",placeholder:"ISO 숫자만 입력",inputMode:"numeric"},{key:"ei",label:"노출 지수(EI)",placeholder:"숫자만 입력",inputMode:"numeric"},{key:"process",label:"현상 방식",choices:["C-41","ECN-2","E-6","B&W"]},{key:"lab",label:"현상소",recent:true},{key:"rollNumber",label:"롤 번호",placeholder:"숫자만 입력",inputMode:"numeric"}];const Re=[{key:"date",label:"촬영일",placeholder:je,inputMode:"numeric"},...Ne];const Fe=[["",["rollNumber"]],["카메라",["camera","lens","focal"]],["필름",["film","maker","boxSpeed","ei"]],["현상",["process","lab"]]];const qe="1 이상의 프레임 번호를 입력해 주세요.";const $e="다른 컷과 번호가 겹쳐요. 다른 번호를 입력해 주세요.";function Te(e){if(!e)return $e;const t=e.map(({frame:e})=>e);if(t.some(e=>!Number.isSafeInteger(e)||e<1||e>ve))return qe;if(new Set(t).size!==t.length)return $e;return null}const Oe={photos:[],importFailures:[],records:[],cutValues:[],roll:{},items:[],mode:null,screen:"start",returnScreen:"roll",presentation:"grid",columns:3,currentCut:0,previewToken:0,thumbnailToken:0,shareSession:null,orientation:{},cutMeta:{},recent:{},editing:null,dialog:null,rollAskPending:true,exportFormat:"jpeg",exportQuality:"high",exportDigits:2,rollFrameLabel:false,rgbHistogram:false,paddingRatio:"original",exportSelection:new Set,webpSupported:null,result:null,cutOrder:[],frameByCut:{},bulkEditing:false,bulkSelection:new Set,bulkDraft:{},bulkAfterAction:false,bulkMessage:"",contactFormat:"jpeg",contactQuality:"high",contactHeader:true,contactRender:null,contactFile:null,contactMessage:"",importedRollKeys:new Set,pendingRecord:null,templateGuideSeen:false,bulkNoticeTimer:null,recordFileName:"",exampleActive:false,exampleRecordBytes:null,appPreviewAvailable:{album:false,webp:true,large:true,contact:true,"zip-backup":true}};const Be=new ue;const De=new WeakMap;const Pe={album:{title:"롤 이름 앨범에 차례대로",image:"./assets/app-previews/photos-album-order.png",caption:"합성 롤의 사진이 1번부터 차례대로 들어간 앱 화면이에요."},webp:{title:"앱의 WebP 내보내기",image:"./assets/app-previews/export-settings.png",caption:"앱에서는 WebP 형식과 품질을 고르고 내보낼 수 있어요."},large:{title:"큰 사진도 원본 크기 그대로",image:"./assets/app-previews/large-photo-frame.png",caption:"합성 30MP급 사진에 원본 크기 그대로 액자를 넣은 결과예요."},contact:{title:"앱의 모아 보기",image:"./assets/app-previews/contact-sheet.png",caption:"합성 롤로 만든 앱의 모아 보기 결과예요."},"zip-backup":{title:"앱의 받은 ZIP 백업",image:"./assets/app-previews/received-zip-backup.png",caption:"앱에서는 받은 압축 파일을 바로 백업하고, 저장한 파일을 다시 고를 수 있어요."}};const ze=e=>document.getElementById(e);const Ve=ze("zip-input");const Qe=ze("record-input");const He=ze("replace-scan-input");const _e=ze("drop-zone");const Ue=ze("status");const Ke=ze("export-status");const Ge=ze("export-reasons");const We=ze("cut-list");const Ze=ze("export-button");const Je=ze("frame-preview-wrap");const Ye=ze("frame-preview");const Xe=ze("share-button");const et=ze("share-progress");const tt=ze("roll-name");const nt=ze("record-name").textContent;const ot=`${o.maxZipBytes/(1024*1024)}MB`;const rt="앱에서는 현상소에서 받은 큰 ZIP도 그대로 넣을 수 있어요.";function at(e){return[...n(e).slice(1),rt]}ze("zip-limit-note").textContent=`체험판은 ${ot}·사진 ${o.maxEntryCount}장까지 받아요`;const lt=".bulk-orientation-actions, .orientation-actions";let it=0;function ct(e){const t=e.querySelector("span:not(.orientation-icon)");if(!t)return false;const n=document.createRange();n.selectNodeContents(t);const o=new Set([...n.getClientRects()].filter(e=>e.width>0&&e.height>0).map(e=>Math.round(e.top*2)/2));return o.size>1}function st(){it=0;const e=[...document.querySelectorAll(lt)];for(const t of e)t.classList.remove("orientation-actions-stacked");for(const t of e){if(t.getClientRects().length===0)continue;t.classList.toggle("orientation-actions-stacked",[...t.children].some(ct))}}function dt(){if(it)return;it=requestAnimationFrame(st)}window.addEventListener("resize",dt);document.fonts?.ready.then(dt);if(typeof ResizeObserver!=="undefined"){const e=new ResizeObserver(dt);for(const t of document.querySelectorAll(lt))e.observe(t)}function ut(e){Oe.screen=e;for(const t of document.querySelectorAll("[data-screen]"))t.hidden=t.dataset.screen!==e;window.scrollTo(0,0);dt()}function mt(e,t=false,n=(Oe.screen==="start"?Ue:Ke),o=null,a=null){const l=o===r;n.textContent=l?[e,...at(a)].join("\n"):e;n.classList.toggle("error",t);n.classList.toggle("limit-error",l)}function ft(e=[]){const t=y(e.map(e=>({frame:e,reason:"frameTooLarge"})));Ge.textContent=t.map(e=>e.text).join(" ");Ge.hidden=t.length===0}function pt(e){return Oe.cutValues.find(t=>t.cutId===e.cutId)??null}function gt(e){let t=pt(e);if(!t){t={cutId:e.cutId,n:e.frame};Oe.cutValues.push(t)}t.n=e.frame;return t}function ht(e,t){return A(Oe.roll,e,t)}function bt(){const e=u(Oe.photos,Oe.records).map((e,t)=>{const n=e.cutId??e.name;if(!(n in Oe.frameByCut))Oe.frameByCut[n]=e.frame;return{...e,cutId:n,originalIndex:t}});if(!Oe.cutOrder.length||Oe.cutOrder.some(t=>!e.some(e=>e.cutId===t))){Oe.cutOrder=e.map(e=>e.cutId)}const t=new Map(e.map(e=>[e.cutId,e]));const n=m(Oe.records);Oe.items=Oe.cutOrder.map(e=>t.get(e)).filter(Boolean).map(e=>{const t=Oe.frameByCut[e.cutId]??e.frame;const o=n.get(t)??null;const r={...e,frame:t,importedRecord:o};const a=pt(r);return{...r,cutRecord:a,record:ht(o,a)}})}function kt(){Oe.shareSession=null;Xe.textContent="사진첩에 저장";et.hidden=true;et.textContent=""}function yt(){const e=Oe.result?.files.filter(e=>e.selected)??[];try{Xe.disabled=!e.length||!M(I(e))}catch{Xe.disabled=true}}function vt(){return Ne.filter(e=>!e.cutOnly).every(e=>!String(Oe.roll[e.key]??"").trim())}function xt(e){return new Blob([e.bytes],{type:e.format==="png"?"image/png":"image/jpeg"})}function wt(e){return e?.completeness===N.INCOMPLETE||e?.completeness===N.UNDETERMINED||e?.completeness===N.NOT_JPEG}function Et(e){for(const t of e){if(t.completeness!==N.UNDETERMINED)continue;const e=R(t.bytes);t.completeness=e.state;t.completenessReason=e.reason}}function Ct(e){return e.cutId in Oe.orientation?Ee(Oe.orientation[e.cutId]):xe()}async function St(e,t,n,o,r){e.textContent="미리보기";e.dataset.thumbnailState="loading";const a=(De.get(e)??0)+1;De.set(e,a);try{const l=Ct(t);const i=document.createElement("canvas");i.setAttribute("aria-label",r);await fe({cache:Be,key:t.cutId,load:async()=>me(()=>xt(t),{dimensions:await j(t.bytes,t.width,t.height,t.format)}),canvas:i,maximum:n,correction:l});if(o!==Oe.thumbnailToken||!e.isConnected||De.get(e)!==a)return;e.replaceChildren(i);e.dataset.thumbnailState="ready"}catch{e.textContent="미리보기 없음";e.dataset.thumbnailState="failed"}}function Lt(){Mn();bt();const e=++Oe.thumbnailToken;const t=Oe.bulkEditing?"list":Oe.presentation;ze("photo-count").textContent=Oe.items.length;ze("roll-title").textContent=tt.value.trim()||C();ze("roll-screen").classList.toggle("roll-screen-bulk",Oe.bulkEditing);At();ze("roll-normal-header").hidden=false;ze("roll-controls").hidden=Oe.bulkEditing;ze("bulk-edit-header").hidden=!Oe.bulkEditing;ze("roll-idle-actions").hidden=Oe.bulkEditing;ze("bulk-edit-controls").hidden=!Oe.bulkEditing;ze("bulk-result").hidden=!Oe.bulkMessage;ze("bulk-result").textContent=Oe.bulkMessage;ze("bulk-edit-title").textContent=`${Oe.bulkSelection.size}컷 선택`;ze("bulk-toggle-all").textContent=Oe.bulkSelection.size===Oe.items.length?"전체 해제":"전체 선택";document.querySelector("[data-go-start]").setAttribute("aria-label",Oe.bulkEditing?"여러 컷 편집 끝내기":"처음으로");We.className=t==="grid"?`cut-grid columns-${Oe.columns}`:"cut-list";We.replaceChildren();Oe.items.forEach((n,o)=>{const r=document.createElement(Oe.bulkEditing?"label":"button");if(!Oe.bulkEditing)r.type="button";r.className=t==="grid"?"grid-cut":`list-cut${Oe.bulkEditing?" selecting":""}`;if(!Oe.bulkEditing)r.addEventListener("click",()=>qt(o));const a=document.createElement("div");a.className=t==="grid"?"grid-photo":"list-photo";a.dataset.cutId=n.cutId;St(a,n,t==="grid"?150:72,e,`${n.frame}번 컷 미리보기`);if(t==="grid"){const e=document.createElement("span");e.className="grid-number";e.textContent=String(n.frame);r.append(a,e)}else{const e=document.createElement("span");e.className="list-summary";const t=document.createElement("strong");t.textContent=`${n.frame}번 컷`;const l=document.createElement("small");l.textContent=`${String(o+1).padStart(2,"0")} / ${String(Oe.items.length).padStart(2,"0")} · ${n.name}`;e.append(t,l);r.append(a,e);if(Oe.bulkEditing){const e=document.createElement("input");e.type="checkbox";e.checked=Oe.bulkSelection.has(n.cutId);e.setAttribute("aria-label",`${n.frame}번 컷 선택`);e.addEventListener("change",()=>{if(Oe.bulkAfterAction){Oe.bulkSelection=new Set([n.cutId]);Oe.bulkAfterAction=false}else if(e.checked)Oe.bulkSelection.add(n.cutId);else Oe.bulkSelection.delete(n.cutId);Oe.bulkMessage="";Lt()});r.append(e)}}We.append(r)});jt();Nt();yt()}function At(){const e=ze("import-failures");const t=Oe.importFailures;e.hidden=Oe.bulkEditing||t.length===0;ze("import-failures-title").textContent=t.length?`읽지 못한 사진 ${t.length}장은 빼고 가져와요.`:"";const n=ze("import-failure-list");n.replaceChildren();for(const e of t){const t=document.createElement("article");t.className="import-failure-row";const o=document.createElement("strong");o.textContent=e.name.replace(/\\/g,"/").split("/").pop();const r=document.createElement("p");r.textContent=e.message;const a=document.createElement("button");a.type="button";a.className="text-button";a.textContent="다른 파일 선택";a.addEventListener("click",()=>Ve.click());t.append(o,r,a);n.append(t)}}function Mt(){return Oe.items.filter(e=>Oe.bulkSelection.has(e.cutId))}function It(){return Oe.items.map(e=>({cut:e.cutId,frame:e.frame}))}function jt(){const e=Oe.bulkSelection.size>0;for(const t of document.querySelectorAll("[data-bulk-orientation], .bulk-action-grid button"))t.disabled=!e;ze("bulk-export").disabled=!e}function Nt(){for(const e of document.querySelectorAll("[data-presentation]")){e.classList.toggle("selected",e.dataset.presentation===Oe.presentation)}for(const e of document.querySelectorAll("[data-columns]")){e.classList.toggle("selected",Number(e.dataset.columns)===Oe.columns);e.disabled=Oe.presentation==="list"}ze("column-toggle").classList.toggle("dimmed",Oe.presentation==="list")}function Rt({label:e,value:t="",source:n="",action:o="",emptyText:r="",onClick:a,onRevert:l}){const i=document.createElement("div");i.className="info-row";const c=document.createElement(a?"button":"div");if(a)c.type="button";c.className="info-row-main";if(a)c.addEventListener("click",a);const s=document.createElement("span");s.className="info-row-text";const d=document.createElement("span");d.className="info-row-label";d.textContent=e;const u=document.createElement("span");u.className=t?"info-row-value":"info-row-value empty";u.textContent=t||r;s.append(d,u);if(n){const e=document.createElement("small");e.textContent=n;s.append(e)}c.append(s);if(a||o){const e=document.createElement("span");e.className="info-row-action";e.textContent=o||"›";c.append(e)}i.append(c);if(l){const e=document.createElement("button");e.className="row-revert";e.type="button";e.textContent="롤 값으로 되돌리기";e.addEventListener("click",l);i.append(e)}return i}function Ft(e){if(!Oe.cutMeta[e.cutId]){const t=Boolean(Oe.recordFileName);Oe.cutMeta[e.cutId]={name:e.importedRecord?.cutName??"",date:e.importedRecord?.date??"",nameSource:e.importedRecord?.cutName?"가져온 기록":"",dateSource:e.importedRecord?.date?"가져온 기록":"",dateProvenance:t?se.provider:se.none}}return Oe.cutMeta[e.cutId]}function qt(e){Oe.currentCut=Math.max(0,Math.min(e,Oe.items.length-1));$t();ut("cut")}function $t(){bt();const e=Oe.items[Oe.currentCut];if(!e)return;const t=++Oe.thumbnailToken;ze("cut-position").textContent=`${String(Oe.currentCut+1).padStart(2,"0")} / ${String(Oe.items.length).padStart(2,"0")}`;ze("cut-roll-name").textContent=tt.value.trim()||C();St(ze("cut-photo"),e,720,t,`${e.frame}번 컷 큰 사진`);const n=Ft(e);const o=ze("cut-info-card");o.replaceChildren(Rt({label:"컷 이름",value:n.name,source:n.nameSource,emptyText:"—",action:n.name?"바꾸기":"추가",onClick:()=>Bt("name","컷 이름")}),Rt({label:"컷 번호",value:String(e.frame),action:"바꾸기",onClick:()=>Bt("frame","컷 번호")}),Rt({label:"촬영일",value:n.date,source:n.dateSource,emptyText:"—",action:n.date?"바꾸기":"추가",onClick:()=>Bt("date","촬영일")}));ze("scan-info-card").replaceChildren(Rt({label:"파일 이름",value:e.name,emptyText:"—"}),...wt(e)?[Rt({label:"원본 상태",value:$})]:[]);ze("roll-info-hint").hidden=!vt();const r=ze("shooting-info-card");r.replaceChildren();for(const t of Ne){const n=L(Oe.roll,e.importedRecord,pt(e),t.key);r.append(Rt({label:t.label,value:n.value,emptyText:"—",source:n.source,action:n.value?"바꾸기":"추가",onClick:()=>Dt("cut",t),onRevert:n.hasCutValue?()=>{delete gt(e)[t.key];kt();$t()}:null}))}const a=ze("cut-memo-card");const l=e.importedRecord?.note;a.hidden=!l;a.replaceChildren(...l?[Rt({label:"메모",value:l})]:[]);ze("previous-cut").disabled=Oe.currentCut===0;ze("next-cut").disabled=Oe.currentCut===Oe.items.length-1}function Tt(){const e=ze("roll-info-groups");e.replaceChildren();for(const[t,n]of Fe){const o=document.createElement("section");o.className="detail-group";const r=document.createElement("h2");r.textContent=t;const a=document.createElement("div");a.className="info-card row-card";for(const e of n){const t=Ne.find(t=>t.key===e);a.append(Rt({label:t.label,value:Oe.roll[e]??"",source:Oe.importedRollKeys.has(e)?"가져온 기록":"",onClick:()=>Dt("roll",t)}))}if(t)o.append(r);o.append(a);e.append(o)}ze("roll-info-help").hidden=!vt();const t=Oe.records.map(e=>e.n).filter(e=>!Oe.items.some(t=>t.frame===e));const n=t.length?`맞는 컷이 없는 기록: ${k(t)}번`:"";ze("record-unmatched").textContent=n;ze("record-unmatched").hidden=!n;ze("record-unmatched-help").hidden=!n;ze("record-unmatched-fix").hidden=!n;ze("example-record-import").hidden=!Oe.exampleActive}function Ot(e=Oe.screen){Oe.returnScreen=e;Tt();ut("roll-info");if(!Oe.templateGuideSeen)un()}function Bt(e,t){const n=Oe.items[Oe.currentCut];const o=Ft(n);Oe.editing={scope:"meta",key:e,label:t,returnScreen:"cut",draft:e==="frame"?String(n.frame):o[e]??"",currentFrame:e==="frame"?n.frame:null};Ut();ut("field")}function Dt(e,t){const n=Oe.items[Oe.currentCut];let o="";let r="";let a=false;if(e==="roll"){o=Oe.roll[t.key]??""}else{const e=L(Oe.roll,n.importedRecord,pt(n),t.key);o=pt(n)?.[t.key]??"";r=e.hasCutValue?"":e.value;a=e.hasCutValue}Oe.editing={scope:e,field:t,key:t.key,label:t.label,returnScreen:e==="roll"?"roll-info":"cut",draft:o,original:o,inherited:r,hasCutValue:a};Ut();ut("field")}function Pt(e){Oe.editing={scope:"bulk",field:e,key:e.key,label:e.label,returnScreen:"bulk-info",draft:Oe.bulkDraft[e.key]??"",original:Oe.bulkDraft[e.key]??"",inherited:"",hasCutValue:false};Ut();ut("field")}function zt({label:e,key:t,placeholder:n="",inputMode:o="text",onApply:r}){Oe.editing={scope:"command",key:t,label:e,returnScreen:"roll",draft:"",inherited:n,inputMode:o,onApply:r};Ut();ut("field")}function Vt(){ze("bulk-info-title").textContent=`고른 ${Oe.bulkSelection.size}컷에 넣기`;const e=ze("bulk-info-rows");e.replaceChildren();for(const t of Re){const n=Oe.bulkDraft[t.key]??"";e.append(Rt({label:t.label,value:n,emptyText:"—",action:n.trim()?"바꾸기":"추가",onClick:()=>Pt(t)}))}ze("bulk-info-done").disabled=!Object.values(Oe.bulkDraft).some(e=>String(e).trim())}function Qt(){return Object.fromEntries(Mt().map(e=>[e.cutId,Object.fromEntries(Re.map(t=>[t.key,t.key==="date"?Ft(e).date:L(Oe.roll,e.importedRecord,pt(e),t.key).value]))]))}function Ht(e){const t=G(Qt(),Oe.bulkDraft,e);for(const[e,n]of Object.entries(t.assignments)){const t=Oe.items.find(t=>t.cutId===e);if(!t)continue;const{date:o,...r}=n;if(o!==undefined){const e=Ft(t);e.date=o;e.dateSource="이 컷에만 입력";e.dateProvenance=se.user}if(Object.keys(r).length)Object.assign(gt(t),r)}Oe.bulkEditing=false;Oe.bulkSelection=new Set;Oe.bulkAfterAction=false;Oe.bulkDraft={};kt();Lt();ut("roll");mn(t.resultText)}function _t(){const e=G(Qt(),Oe.bulkDraft,false);if(e.collisionCutCount>0){an({title:`이미 값이 있는 ${e.collisionCutCount}컷도 바꿀까요?`,body:"",cancel:"아니요",confirm:"바꾸기",onCancel:()=>Ht(false),onConfirm:()=>Ht(true)})}else Ht(false)}function Ut(){const e=Oe.editing;if(!e)return;ze("field-title").textContent=e.label;ze("field-input-label").textContent=e.label;const t=ze("field-input");t.value=e.draft;e.acceptedInput=t.value;t.placeholder=Gt(e)?je:e.inherited||e.field?.placeholder||"";t.inputMode=e.inputMode??e.field?.inputMode??(["ap","focal","frame"].includes(e.key)?"decimal":"text");const n=ze("field-helper");n.textContent=e.scope==="meta"&&e.key==="frame"?ge:Gt(e)?Ie:"";n.hidden=!n.textContent;const o=ze("field-choices");o.replaceChildren();for(const n of e.field?.choices??[]){const r=document.createElement("button");r.type="button";r.textContent=n;r.addEventListener("click",()=>{t.value=n;e.draft=n;Xt()});o.append(r)}o.hidden=o.childElementCount===0;ze("field-revert").hidden=!(e.scope==="cut"&&e.hasCutValue);Kt();Xt();requestAnimationFrame(()=>t.focus())}function Kt(){const e=Oe.editing;const t=e.field?.recent?Oe.recent[e.key]??[]:[];const n=ze("recent-section");const o=ze("recent-values");o.replaceChildren();for(const n of t.filter(t=>!(e.field?.choices??[]).includes(t))){const t=document.createElement("button");t.type="button";t.textContent=n;t.addEventListener("click",()=>{ze("field-input").value=n;e.draft=n;rn(true)});o.append(t)}n.hidden=o.childElementCount===0}function Gt(e){return e?.key==="date"&&["meta","bulk","command"].includes(e.scope)}function Wt(e){return e?.scope==="command"&&e.key==="frame"}function Zt(e){return e?.scope==="command"&&e.key==="move"}function Jt(e){return ye(e,It().map(({cut:e,frame:t})=>({id:e,number:t})),Oe.bulkSelection)}function Yt(e){const t=String(e??"").trim();return{value:t,valid:t===""||a(t)===t}}function Xt(){const e=Oe.editing;const t=ze("field-message");const n=ze("field-input").value;e.draft=n;const o=ze("field-done");if(e.scope==="meta"&&e.key==="frame"){const t=be(n,e.currentFrame,new Set(It().map(({frame:e})=>e)));e.validationMessage=ke(t.messageKey)??"";e.validationValue=n;o.disabled=!t.completeEnabled}else if(Wt(e)){const t=be(n,1,new Set,ve);e.validationMessage=ke(t.messageKey)??"";e.validationValue=n;o.disabled=!t.completeEnabled}else if(Zt(e)){const t=Jt(n);e.validationMessage=t.completeEnabled?"":t.messageText??"";e.validationValue=n;o.disabled=!t.completeEnabled}else if(["cut","bulk"].includes(e.scope)&&e.key==="ap"){o.disabled=n!==e.original&&Q(n).result==="rejected"}else if(e.scope==="roll"&&e.key==="focal"){o.disabled=n!==e.original&&n.trim()!==""&&D(n)===null}else if(Gt(e)){const t=Yt(n);e.validationMessage=t.valid?"":Me;e.validationValue=n;o.disabled=!t.valid}else{o.disabled=false}if(e.validationValue!==n)e.validationMessage="";if(e.validationMessage){t.textContent=e.validationMessage;t.classList.add("error-text");t.hidden=false;return}t.classList.remove("error-text");const r=e.field?.reason;if(r&&z(r,n)){t.textContent=P("reason_text").text_ios;t.hidden=false}else{t.textContent="";t.hidden=true}}function en(e){const t=Oe.editing;if(t.scope==="roll")return Oe.roll[e]??"";if(t.scope==="bulk")return Oe.bulkDraft[e]??"";const n=Oe.items[Oe.currentCut];return L(Oe.roll,n.importedRecord,pt(n),e).value}function tn(){const e=Oe.editing;if(e.key!=="film"&&e.key!=="lens")return null;const t=e.key==="lens"?e.original:en("lens");const n=e.key==="film"?e.original:en("film");return U({previousLens:t,newLens:e.key==="lens"?e.draft:t,focal:en("focal"),previousFilm:n,newFilm:e.key==="film"?e.draft:n,manufacturer:en("maker"),boxSpeed:en("boxSpeed")})}function nn(e,t){if(!t)return;const n={...t.fills,...t.changes};if(n.manufacturer)e.maker=n.manufacturer;if(n.boxSpeed)e.boxSpeed=n.boxSpeed;if(n.focal)e.focal=n.focal}function on(e,t=null){const n=Oe.editing;if(Gt(n)){const t=Yt(e);if(!t.valid){n.validationMessage=Me;n.validationValue=e;Xt();return}e=t.value}if(n.scope==="command"){if(n.onApply(e)===false)return}else if(n.scope==="meta"){const t=Oe.items[Oe.currentCut];const o=Ft(t);if(n.key==="name"||n.key==="date"){o[n.key]=e.trim();o[`${n.key}Source`]=e.trim()?"이 컷에만 입력":"";if(n.key==="date")o.dateProvenance=e.trim()?se.user:se.deleted}if(n.key==="frame"){const o=be(e,n.currentFrame,new Set(It().map(({frame:e})=>e)));if(!o.completeEnabled){n.validationMessage=ke(o.messageKey)??"";n.validationValue=e;Xt();return}const r=It().map(e=>e.cut===t.cutId?{...e,frame:o.value}:e);const a=Te(r);if(a){n.validationMessage=a;n.validationValue=e;Xt();return}xn(r)}}else if(n.scope==="roll"){if(e.trim())Oe.roll[n.key]=e;else delete Oe.roll[n.key];Oe.importedRollKeys.delete(n.key);nn(Oe.roll,t)}else if(n.scope==="bulk"){if(e.trim())Oe.bulkDraft[n.key]=e.trim();else delete Oe.bulkDraft[n.key];nn(Oe.bulkDraft,t)}else{const o=Oe.items[Oe.currentCut];const r=gt(o);if(e.trim())r[n.key]=e;else delete r[n.key];nn(r,t)}if(n.field?.recent&&e.trim()){const t=Oe.recent[n.key]??[];Oe.recent[n.key]=[e.trim(),...t.filter(t=>t!==e.trim())].slice(0,5)}kt();bt();if(n.returnScreen==="roll-info")Tt();else if(n.returnScreen==="bulk-info")Vt();else if(n.returnScreen==="roll")Lt();else $t();ut(n.returnScreen);Oe.editing=null}function rn(e=false){const t=Oe.editing;if(!t)return;t.draft=ze("field-input").value;if(t.scope!=="command"&&t.scope!=="meta"&&H[t.key]){const e=_(t.key,t.draft,t.original??"");if(!e.accepted){t.validationMessage=e.message;t.validationValue=t.draft;Xt();return}t.draft=e.value}if(t.scope==="roll"&&t.key==="focal"&&t.draft!==t.original&&t.draft.trim()){const e=D(t.draft);if(e===null)return;t.draft=e}if(["cut","bulk"].includes(t.scope)&&t.key==="ap"&&t.draft!==t.original){const e=Q(t.draft);if(e.result==="rejected")return;t.draft=e.stored??""}const n=t.key==="sh"?B(t.draft):null;if(n&&n!==t.draft.trim()){an({title:`셔터를 ${n}로 바꿀까요?`,body:P("dialog_body").text_ios,cancel:"아니요",confirm:"바꾸기",onCancel:()=>on(t.draft),onConfirm:()=>on(n)});return}const o=tn();if(o){an({title:o.title,body:o.body,cancel:"아니요",confirm:o.accept,onCancel:()=>on(t.draft),onConfirm:()=>on(t.draft,o)});return}on(t.draft);if(e)Kt()}function an({title:e,body:t,cancel:n,confirm:o,onCancel:r,onConfirm:a,onDismiss:l,dismissOnOutside:i=false}){Oe.dialog={onCancel:r,onConfirm:a,onDismiss:l,dismissOnOutside:i};ze("dialog-title").textContent=e;ze("dialog-body").textContent=t;ze("dialog-body").hidden=!t;ze("dialog-options").hidden=true;ze("dialog-options").replaceChildren();ze("dialog-cancel").hidden=false;ze("dialog-confirm").hidden=false;ze("dialog-cancel").textContent=n;ze("dialog-confirm").textContent=o;ze("dialog-layer").hidden=false;ze("dialog-confirm").focus()}function ln(e,t){Oe.dialog={onCancel:()=>{}};ze("dialog-title").textContent=e;ze("dialog-body").hidden=true;const n=ze("dialog-options");n.replaceChildren();for(const e of t){if(e.separatorBefore){const e=document.createElement("hr");e.setAttribute("aria-hidden","true");n.append(e)}const t=document.createElement("button");t.type="button";t.textContent=e.label;t.disabled=Boolean(e.disabled);t.addEventListener("click",()=>{if(t.disabled)return;ze("dialog-layer").hidden=true;Oe.dialog=null;e.action()});n.append(t)}n.hidden=false;ze("dialog-cancel").hidden=false;ze("dialog-cancel").textContent="닫기";ze("dialog-confirm").hidden=true;ze("dialog-layer").hidden=false;n.querySelector("button")?.focus()}function cn(e){const t=Oe.dialog;ze("dialog-layer").hidden=true;Oe.dialog=null;ze("dialog-body").hidden=false;ze("dialog-options").hidden=true;ze("dialog-confirm").hidden=false;if(e==="confirm")t?.onConfirm?.();else if(e==="dismiss")t?.onDismiss?.();else t?.onCancel?.()}function sn(){ze("example-sheet-layer").hidden=false;ze("example-sheet-close").focus()}function dn(){ze("example-sheet-layer").hidden=true}function un(){an({title:"촬영 기록 불러오기 안내",body:"CSV, 마크다운, 텍스트 파일로 저장한 촬영 기록 메모를 읽어서 반영할 수 있어요.",cancel:"예시 파일 받기",confirm:"확인",dismissOnOutside:true,onCancel:()=>{Oe.templateGuideSeen=true;sn()},onConfirm:()=>{Oe.templateGuideSeen=true},onDismiss:()=>{Oe.templateGuideSeen=true}})}function mn(e){if(Oe.bulkNoticeTimer)window.clearTimeout(Oe.bulkNoticeTimer);Oe.bulkMessage=e;ze("bulk-result").textContent=e;ze("bulk-result").hidden=!e;if(!e)return;fn();Oe.bulkNoticeTimer=window.setTimeout(()=>{Oe.bulkMessage="";ze("bulk-result").hidden=true;Oe.bulkNoticeTimer=null},4e3)}function fn(){const e=ze("bulk-result");const t=document.querySelector("[data-screen]:not([hidden])");const n=t?.querySelector(".bottom-bar");const o=n?Math.max(8,window.innerHeight-n.getBoundingClientRect().top+8):8;e.style.bottom=`${Math.round(o)}px`}async function pn(){const e=++Oe.previewToken;const t=ze("preview-question");const n=ze("preview-helper");const o=ze("large-photo-app");Je.classList.remove("limit");o.hidden=true;Ye.hidden=true;t.hidden=false;n.classList.toggle("visible",Oe.mode!==null);n.setAttribute("aria-hidden",Oe.mode===null?"true":"false");if(Oe.mode===null||!Oe.items.length){t.innerHTML="사진 아래에 카메라·필름 같은 촬영 정보를 넣을 수 있어요.<br>아래에서 고르면 여기에 미리보기가 나와요.";return}const r=Oe.items[0];const a=gn()[0]??{...r,record:{...r.record,date:Ft(r).date},correction:Ct(r)};if(Oe.mode!=="off"&&!x(a).allowed){t.textContent="이 사진은 웹에서 원본 크기 그대로 액자를 넣기엔 커요.";o.hidden=!Oe.appPreviewAvailable.large;Je.classList.add("limit");return}try{let n;if(Oe.mode==="off"){const e=await Se(a);try{const t=Math.min(1,1200/Math.max(e.width,e.height));const o=document.createElement("canvas");o.width=Math.max(1,Math.round(e.width*t));o.height=Math.max(1,Math.round(e.height*t));o.getContext("2d").drawImage(e,0,0,o.width,o.height);n=o}finally{Le(e)}}else{const e=await w(a,a.record,Oe.mode,a.frame,.9,Oe.rollFrameLabel,Oe.rgbHistogram);n=f(e.canvas,Oe.paddingRatio,e.geometry.photoY,e.geometry.photoHeight)}if(e!==Oe.previewToken)return;Ye.width=n.width;Ye.height=n.height;Ye.getContext("2d").drawImage(n,0,0);t.hidden=true;Ye.hidden=false}catch(t){if(e===Oe.previewToken)mt(t.message,true,Ke)}}function gn(){return Oe.items.filter(e=>Oe.exportSelection.has(e.frame)).map(e=>({...e,record:{...e.record,date:Ft(e).date},date:Ft(e).date,correction:Ct(e),cutName:Ft(e).name}))}function hn(){for(const e of document.querySelectorAll("input[name=\"frame-mode\"]"))e.checked=e.value===Oe.mode;ze("roll-frame-row").hidden=Oe.mode===null||Oe.mode==="off";ze("rgb-histogram-row").hidden=!E(Oe.mode);ze("ratio-row").hidden=Oe.mode===null||Oe.mode==="off";ze("roll-frame-label").checked=Oe.rollFrameLabel;ze("rgb-histogram").checked=Oe.rgbHistogram;for(const e of document.querySelectorAll("[data-ratio]"))e.classList.toggle("selected",e.dataset.ratio===Oe.paddingRatio);for(const e of document.querySelectorAll("[data-format]"))e.classList.toggle("selected",e.dataset.format===Oe.exportFormat);for(const e of document.querySelectorAll("[data-quality]"))e.classList.toggle("selected",e.dataset.quality===Oe.exportQuality);for(const e of document.querySelectorAll("[data-digits]"))e.classList.toggle("selected",Number(e.dataset.digits)===Oe.exportDigits);const e=ze("quality-row");e.hidden=Oe.exportFormat==="png";const t=e.querySelector("[data-quality=\"lossless\"]");t.hidden=Oe.exportFormat!=="webp";ze("quality-toggle").classList.toggle("four",Oe.exportFormat==="webp");ze("quality-toggle").classList.toggle("three",Oe.exportFormat!=="webp");const n=Oe.exportSelection.size;ze("selected-cut-count").textContent=`${n}컷 선택 (전체 ${Oe.items.length}컷)`;ze("toggle-all-cuts").textContent=n===Oe.items.length?"전체 해제":"전체 선택";const o=gn();const r=o.some(wt);const a=Oe.mode===null?"사진만·간단히·자세히 중에서 하나를 골라 주세요.":n===0?"내보낼 컷을 골라 주세요.":r?"스캔 파일을 열 수 없어요.":"";ze("export-blocker").textContent=a;Ze.disabled=Oe.mode===null||n===0;Ze.textContent=`전체 ${n}장 내보내기`}function bn(){const e=ze("export-cut-list");e.replaceChildren();const t=++Oe.thumbnailToken;for(const n of Oe.items){const o=document.createElement("label");o.className="export-cut-row";const r=document.createElement("input");r.type="checkbox";r.checked=Oe.exportSelection.has(n.frame);r.addEventListener("change",()=>{if(r.checked)Oe.exportSelection.add(n.frame);else Oe.exportSelection.delete(n.frame);hn();pn()});const a=document.createElement("span");a.className="export-cut-row-photo";St(a,n,56,t,`${n.frame}번 컷 미리보기`);const l=document.createElement("span");l.className="export-cut-row-text";const i=document.createElement("strong");i.textContent=`${n.frame}번 컷`;const c=document.createElement("small");c.textContent=n.name;l.append(i,c);o.append(r,a,l);e.append(o)}hn()}async function kn(){Oe.webpSupported=await oe();ze("webp-app-badge").hidden=Oe.webpSupported}function yn(e=null){Oe.returnScreen=Oe.screen==="cut"?"cut":"roll";bt();Oe.mode=null;Oe.exportFormat="jpeg";Oe.exportQuality="high";Oe.exportDigits=2;Oe.rollFrameLabel=false;Oe.rgbHistogram=false;Oe.paddingRatio="original";Oe.exportSelection=new Set(Oe.returnScreen==="cut"?[Oe.items[Oe.currentCut].frame]:e?Oe.items.filter(t=>e.has(t.cutId)).map(e=>e.frame):Oe.items.map(e=>e.frame));Ke.textContent="";ft();bn();pn();ut("export");kn()}function vn(){Oe.bulkEditing=true;Oe.bulkSelection=new Set;Oe.bulkAfterAction=false;Oe.bulkMessage="";Lt();ut("roll")}function xn(e){const t=Te(e);if(t){mn(t);return false}Oe.cutOrder=e.map(({cut:e})=>e);Oe.frameByCut=Object.fromEntries(e.map(({cut:e,frame:t})=>[e,t]));bt();Cn();Oe.bulkAfterAction=true;Oe.bulkMessage="";kt();Lt();return true}function wn(e){const t=It();const n=he(Object.fromEntries(t.map(({cut:e,frame:t})=>[e,t])),Oe.bulkSelection,e);if(!n.changed){mn(n.result==="invalid"?ke("NUMBER_AT_LEAST_ONE"):pe);return false}const o=X(t,[...Oe.bulkSelection],e);return xn(o)}function En(e){return xn(e.order.map(t=>({cut:t,frame:e.numbers[t]})))}function Cn(){const e=de(Oe.items.map(e=>{const t=Ft(e);return{cutId:e.cutId,frame:e.frame,date:t.date,dateProvenance:t.dateProvenance}}),Oe.records.map(e=>({frame:e.n,date:e.date??""})));for(const t of e){const e=Oe.cutMeta[t.cutId];if(e?.dateProvenance!==se.provider)continue;e.date=t.date;e.dateSource=t.date?"가져온 기록":""}}function Sn(e){const t=Mt();for(const n of t){const t=Ct(n);let o=t;if(e==="left")o=Ce(t,-1);if(e==="right")o=Ce(t,1);if(e==="flip")o=we(t);Oe.orientation[n.cutId]=o}Oe.bulkAfterAction=true;Oe.bulkMessage="";kt();const n=Oe.thumbnailToken;const o=new Map([...We.querySelectorAll(".list-photo")].map(e=>[e.dataset.cutId,e]));for(const e of t){const t=o.get(e.cutId);if(t)St(t,e,72,n,`${e.frame}번 컷 미리보기`)}}function Ln(){const e=[...Oe.bulkSelection];const t=e.length<2||!Y(It(),e);const n=[{label:"+1",action:()=>wn(1)},{label:"−1",action:()=>wn(-1)},{label:"맨 앞으로",action:()=>xn(K(It(),e,0))},{label:"맨 뒤로",action:()=>xn(K(It(),e,Oe.items.length))},{label:"번호 새로 매기기…",separatorBefore:true,action:()=>zt({label:"컷 번호 다시 매기기",key:"frame",placeholder:"시작 번호",inputMode:"numeric",onApply:t=>{const n=be(t,1,new Set,ve);if(!n.completeEnabled){Oe.editing.validationMessage=ke(n.messageKey)??"";Oe.editing.validationValue=t;Xt();return false}const o=Z(It(),e,n.value);const r=Te(o);if(r){Oe.editing.validationMessage=r;Oe.editing.validationValue=t;Xt();return false}return xn(o)}})},{label:"다른 컷 뒤로 옮기기…",action:()=>zt({label:"옮기기",key:"move",placeholder:"컷 번호",inputMode:"numeric",onApply:e=>{const t=Jt(e);if(!t.completeEnabled){Oe.editing.validationMessage=t.messageText??"";Oe.editing.validationValue=e;Xt();return false}if(t.kind==="move_after")return En(t);an({title:"컷 번호 바꾸기",body:t.messageText,cancel:"취소",confirm:t.kind==="overlap_shift"?"뒤 번호 밀기":"새 번호 붙이기",onCancel:()=>{},onConfirm:()=>{if(En(t)){Oe.editing=null;ut("roll")}}});return false}})},{label:"순서 뒤집기",separatorBefore:true,disabled:t,action:()=>xn(J(It(),e))}];const o=ze("bulk-number-menu");o.replaceChildren();for(const e of n){if(e.separatorBefore){const e=document.createElement("hr");e.setAttribute("aria-hidden","true");o.append(e)}const t=document.createElement("button");t.type="button";t.setAttribute("role","menuitem");t.textContent=e.label;t.disabled=Boolean(e.disabled);t.setAttribute("aria-disabled",String(t.disabled));t.addEventListener("click",()=>{if(t.disabled)return;Mn();e.action()});o.append(t)}o.hidden=false;ze("bulk-number").setAttribute("aria-expanded","true");An()[0]?.focus()}function An(){return[...ze("bulk-number-menu").querySelectorAll("[role=\"menuitem\"]:not(:disabled)")]}function Mn(e=false){const t=ze("bulk-number-menu");if(t.hidden)return;t.hidden=true;ze("bulk-number").setAttribute("aria-expanded","false");if(e)ze("bulk-number").focus()}function In(){const e=[tt.value.trim()||C(),Oe.roll.camera,Oe.roll.film].map(e=>String(e??"").trim()).filter(Boolean).join(" · ");const t=Oe.items.map(e=>Ft(e).date).filter(Boolean).sort();const n=t.length?t[0]===t.at(-1)?`${t[0].replaceAll("-",".")}.`:`${t[0].replaceAll("-",".")}. - ${t.at(-1).replaceAll("-",".")}.`:"";return{left:e,right:[n,`${Oe.items.length}컷`].filter(Boolean).join(" · ")}}async function jn(){const e=++Oe.previewToken;Oe.contactRender=null;Oe.contactFile=null;Nn();bt();ze("contact-roll-name").textContent=tt.value.trim()||C();ze("contact-loading").hidden=false;ze("contact-canvas").hidden=true;ze("contact-limit").hidden=true;const t=te(Oe.items.length,Oe.contactHeader);if(!t.allowed){ze("contact-loading").hidden=true;ze("contact-limit").hidden=false;ze("contact-app-preview").hidden=!Oe.appPreviewAvailable.contact;Oe.contactRender=null;Nn();return}const n=await ne(Oe.items,{header:Oe.contactHeader?In():null,corrections:Oe.orientation});if(e!==Oe.previewToken||Oe.screen!=="contact")return;Oe.contactRender=n;const o=ze("contact-canvas");o.width=n.canvas.width;o.height=n.canvas.height;o.getContext("2d").drawImage(n.canvas,0,0);o.hidden=false;ze("contact-loading").hidden=true;ze("contact-result").textContent=Oe.contactMessage;Nn()}function Nn(){for(const e of document.querySelectorAll("[data-contact-format]"))e.classList.toggle("selected",e.dataset.contactFormat===Oe.contactFormat);for(const e of document.querySelectorAll("[data-contact-quality]"))e.classList.toggle("selected",e.dataset.contactQuality===Oe.contactQuality);ze("contact-quality-row").hidden=Oe.contactFormat==="png";const e=ze("contact-quality").querySelector("[data-contact-quality=\"lossless\"]");e.hidden=Oe.contactFormat!=="webp";ze("contact-quality").classList.toggle("four",Oe.contactFormat==="webp");ze("contact-quality").classList.toggle("three",Oe.contactFormat!=="webp");ze("contact-header-enabled").checked=Oe.contactHeader;const t=!Oe.contactRender?.canvas;ze("contact-save").disabled=t;ze("contact-share").disabled=t}function Rn(e){Oe.contactMessage=e;ze("contact-result").textContent=e}async function Fn(e=false){if(!Oe.contactRender?.canvas)return null;const t=performance.now();const n={high:.85,balanced:.75,small:.65}[Oe.contactQuality]??.85;const o=await ee(Oe.contactRender.canvas,Oe.contactFormat,n,Oe.contactQuality==="lossless");const r={jpeg:"jpg",webp:"webp",png:"png"}[Oe.contactFormat];const a=`${tt.value.trim()||C()}_contact.${r}`;const l=performance.now()-t;const i=new Uint8Array(await o.arrayBuffer());if(e)p(i,a,o.type);Oe.contactFile={blob:o,name:a,elapsedMs:l};Rn(Oe.exampleActive?`웹 모아 보기 · ${a}`:`웹 모아 보기 · ${(l/1e3).toFixed(2)}초 · ${a}`);return Oe.contactFile}async function qn(){Oe.contactFormat="jpeg";Oe.contactQuality="high";Oe.contactHeader=true;Oe.contactFile=null;Rn("");ut("contact");kn();await jn()}async function $n(e,{askRollInfo:n=true}={}){try{mt("ZIP을 읽고 있어요.",false,Ue);const o=await t(e);Be.clear();const{rollName:r,...a}=S(Oe);Object.assign(Oe,a);tt.value=r;ze("record-name").textContent=nt;ze("record-name").classList.remove("error-text");Oe.photos=o;Oe.importFailures=o.failures??[];Oe.exampleActive=false;Oe.exampleRecordBytes=null;Oe.cutOrder=[];Oe.frameByCut={};Oe.cutValues=[];Oe.cutMeta={};Oe.orientation={};Oe.bulkEditing=false;Oe.bulkSelection=new Set;Oe.rollAskPending=n;kt();Lt();ut("roll");if(Oe.rollAskPending&&o.length>0&&vt()){Oe.rollAskPending=false;an({title:"롤 정보를 넣을까요?",body:"카메라·필름 같은 값을 한 번 넣으면 모든 컷에 들어가요.\n몰라도 괜찮아요. 안 넣어도 사진은 그대로 내보낼 수 있어요.",cancel:"나중에",confirm:"롤 정보 넣기",onCancel:()=>{},onConfirm:()=>Ot("roll")})}return true}catch(e){Be.clear();Oe.photos=[];bt();ut("start");mt(e.message,true,Ue,e.kind,e.limit);return false}}function Tn(e){const t=Number(String(e).match(/(\d+)(?=\.[^.]+$)/)?.[1]);return Number.isInteger(t)&&t>0?t:null}async function On(){const e=ze("shifted-demo");e.disabled=true;mt("합성 예시를 열고 있어요.",false,Ue);try{const{hanriverRollExampleBytes:e}=await(import("./examples/hanriver-roll.js"));const{zipBytes:t,recordBytes:n}=e();const o=await $n(new File([t],"hanriver-roll.zip",{type:"application/zip"}),{askRollInfo:false});if(!o)return;Oe.exampleActive=true;Oe.exampleRecordBytes=n;Oe.frameByCut=Object.fromEntries(Oe.photos.map(e=>[e.name,Tn(e.name)]));bt();Lt()}catch(e){ut("start");mt(e.message,true,Ue)}finally{e.disabled=false}}function Bn(){const t=Oe.pendingRecord;if(!t)return;const{parsed:n,fileName:o,unreadRaw:r}=t;ze("record-confirm-name").textContent=o;const a=ze("record-roll-values");a.replaceChildren();for(const[e,t]of re){const o=document.createElement("div");o.className="template-line";const r=document.createElement("span");r.textContent=t;const l=document.createElement("span");l.textContent=n.roll[e]??"—";o.append(r,l);if(e==="name"&&n.roll[e]&&b(n.roll[e]).reason==="reserved"){const e=document.createElement("p");e.className="field-message error-text";e.textContent=h;o.append(e)}a.append(o)}const l=ze("record-cut-values");l.replaceChildren();for(const e of n.cuts){const t=document.createElement("div");t.className="template-line";t.textContent=ce(e);l.append(t)}const i=ze("record-confirm-notices");i.replaceChildren();const c=e(n.cutNameRejections??[]);const d=le(n.cuts.map(e=>e.n),Oe.items.map(e=>e.frame));const u=[...c,s(n.unknownColumns),n.unread.length?"읽지 못한 줄은 넣지 않았어요. 아래에서 원문을 볼 수 있어요.":null,...ie(n.confirmations?.map(e=>e.kind)),d].filter(Boolean);for(const e of u){const t=document.createElement("p");t.textContent=e;i.append(t)}const m=ze("record-unread-lines");m.replaceChildren();for(const e of r){const t=document.createElement("div");t.textContent=`${e.line}: ${e.text}`;m.append(t)}ze("record-confirm").disabled=Boolean(document.querySelector("#record-roll-values .error-text:not([hidden])"))}function Dn(){const e=Oe.pendingRecord;if(!e)return;const{parsed:t,fileName:n}=e;if(t.roll.name&&b(t.roll.name).reason==="reserved")return;const o={...t.roll};if(o.name){tt.value=o.name;delete o.name}Oe.roll={...Oe.roll,...o};Oe.importedRollKeys=new Set(Object.keys(o));const r=m(Oe.records);for(const e of Oe.items)Ft(e);Oe.records=t.cuts;Oe.recordFileName=n;bt();for(const e of Oe.items){const t=Ft(e);Object.assign(t,ae(t,r.get(e.frame)?.cutName,e.importedRecord?.cutName));if(t.dateProvenance===se.none)t.dateProvenance=se.provider}Cn();kt();ze("record-name").textContent=`${n} · ${t.cuts.length}컷을 읽었어요.`;ze("record-name").classList.remove("error-text");Oe.pendingRecord=null;Tt();ut("roll-info")}async function Pn(e){try{const t=d(await e.arrayBuffer());if(t.state==="UNREADABLE")throw new Error("인코딩 문제로 내용을 읽지 못했어요.");const n=t.text;const o=e.name.toLowerCase().endsWith(".csv")?l(n):i(n);Oe.pendingRecord={fileName:e.name,parsed:o,unreadRaw:c(o,n)};Bn();ut("record-confirm")}catch(e){Oe.pendingRecord=null;ze("record-name").textContent=e.message;ze("record-name").classList.add("error-text");ut("roll-info")}finally{Qe.value=""}}async function zn(){const e=tt.value||C();const t={high:.85,balanced:.75,small:.65}[Oe.exportQuality]??.85;return g(gn(),{rollName:e,mode:Oe.mode,format:Oe.exportFormat,quality:t,lossless:Oe.exportQuality==="lossless",width:Oe.exportDigits,rollFrameLabel:Oe.rollFrameLabel,rgbHistogram:Oe.mode==="off"?false:Oe.rgbHistogram,paddingRatio:Oe.mode==="off"?"original":Oe.paddingRatio})}function Vn(e){const t=Pe[e];if(!t||!Oe.appPreviewAvailable[e])return;ze("app-preview-title").textContent=t.title;ze("app-preview-image").src=t.image;ze("app-preview-caption").textContent=t.caption;ze("app-preview-layer").hidden=false;ze("app-preview-close").focus()}const Qn=112;function Hn(e){return(async()=>{const t=await j(e.blob,e.width,e.height,e.type==="image/jpeg"?"jpeg":"other");const{bitmap:n}=await me(e.blob,{maxEdge:Qn,dimensions:t});try{const e=Math.min(Qn/n.width,Qn/n.height,1);const t=document.createElement("canvas");t.width=Math.max(1,Math.round(n.width*e));t.height=Math.max(1,Math.round(n.height*e));t.getContext("2d").drawImage(n,0,0,t.width,t.height);return t}finally{n.close?.()}})()}function _n(e,t){if(e.previewReleased)return;e.preview??=Hn(e);e.preview.then(n=>{if(e.previewReleased||!t.isConnected)return;t.replaceChildren(n)},()=>{})}function Un(e){for(const t of e?.files??[]){t.previewReleased=true;t.preview?.then(e=>{e.width=0;e.height=0},()=>{});t.preview=null}}function Kn(){const e=Oe.result;ze("result-title").textContent=`사진 ${e.files.length}장을 내려받았어요.`;ze("export-elapsed").hidden=Oe.exampleActive;ze("export-elapsed").textContent=Oe.exampleActive?"":`롤 전체 내보내기 · ${(e.elapsedMs/1e3).toFixed(2)}초`;const t=e.files.filter(e=>e.selected).length;ze("result-files-title").textContent=`공유할 파일 · ${t}개 선택`;ze("toggle-all-results").textContent=t===e.files.length?"전체 해제":"전체 선택";const n=ze("result-file-list");n.replaceChildren();for(const t of e.files){const e=document.createElement("label");e.className="result-file-row";const o=document.createElement("input");o.type="checkbox";o.checked=t.selected;o.addEventListener("change",()=>{t.selected=o.checked;Kn()});const r=document.createElement("span");r.className="result-thumb";_n(t,r);const a=document.createElement("span");a.className="result-file-text";const l=document.createElement("strong");l.textContent=t.name;const i=document.createElement("small");i.textContent=`${t.type.replace("image/","").toUpperCase()} · ${Math.max(1,Math.round(t.size/1024))}KB`;a.append(l,i);e.append(o,r,a);n.append(e)}et.hidden=true;yt()}Ve.addEventListener("change",async()=>{const e=Ve.files[0]??null;try{if(e)await $n(e)}finally{Ve.value=""}});Qe.addEventListener("change",()=>Qe.files[0]&&Pn(Qe.files[0]));ze("shifted-demo").addEventListener("click",On);ze("record-import").addEventListener("click",()=>Qe.click());ze("example-record-import").addEventListener("click",()=>{if(Oe.exampleActive&&Oe.exampleRecordBytes){Pn(new File([Oe.exampleRecordBytes],"hanriver_shooting_record.csv",{type:"text/csv"}))}});ze("record-examples").addEventListener("click",sn);ze("record-guide-info").addEventListener("click",un);ze("record-cancel").addEventListener("click",()=>{Oe.pendingRecord=null;Tt();ut("roll-info")});ze("record-confirm").addEventListener("click",Dn);ze("example-sheet-close").addEventListener("click",dn);ze("example-sheet-layer").addEventListener("click",e=>{if(e.target===ze("example-sheet-layer"))dn()});ze("bulk-result").addEventListener("click",()=>mn(""));for(const e of["dragenter","dragover"]){_e.addEventListener(e,e=>{e.preventDefault();_e.classList.add("is-over")})}for(const e of["dragleave","drop"]){_e.addEventListener(e,e=>{e.preventDefault();_e.classList.remove("is-over")})}_e.addEventListener("drop",e=>e.dataTransfer.files[0]&&$n(e.dataTransfer.files[0]));for(const e of document.querySelectorAll("[data-presentation]")){e.addEventListener("click",()=>{Oe.presentation=e.dataset.presentation;Lt()})}for(const e of document.querySelectorAll("[data-columns]")){e.addEventListener("click",()=>{Oe.columns=Number(e.dataset.columns);Lt()})}for(const e of document.querySelectorAll("[data-open-export]"))e.addEventListener("click",()=>yn());for(const e of document.querySelectorAll("[data-open-roll-info]"))e.addEventListener("click",()=>Ot("cut"));for(const e of document.querySelectorAll("[data-go-start]"))e.addEventListener("click",()=>{if(Oe.bulkEditing)Gn();else ut("start")});ze("roll-info-button").addEventListener("click",()=>Ot("roll"));ze("record-unmatched-fix").addEventListener("click",vn);ze("roll-menu").addEventListener("click",()=>ln("롤 메뉴",[{label:"순서대로 번호 다시 매기기",action:()=>an({title:"지금 순서대로 1번부터 번호를 다시 매길까요?",body:"",cancel:"취소",confirm:"확인",onCancel:()=>{},onConfirm:()=>{xn(W(It()));Lt();ut("roll")}})}]));ze("open-bulk-edit").addEventListener("click",vn);ze("open-contact-sheet").addEventListener("click",qn);ze("bulk-toggle-all").addEventListener("click",()=>{Oe.bulkSelection=Oe.bulkSelection.size===Oe.items.length?new Set:new Set(Oe.items.map(e=>e.cutId));Oe.bulkAfterAction=false;Oe.bulkMessage="";Lt()});function Gn(){Oe.bulkEditing=false;Oe.bulkSelection=new Set;Oe.bulkMessage="";Lt()}ze("bulk-finish").addEventListener("click",Gn);ze("bulk-export").addEventListener("click",()=>yn(new Set(Oe.bulkSelection)));ze("bulk-shooting-info").addEventListener("click",()=>{Oe.bulkDraft={};Vt();ut("bulk-info")});ze("bulk-info-back").addEventListener("click",()=>{Oe.bulkDraft={};Lt();ut("roll")});ze("bulk-info-done").addEventListener("click",_t);ze("bulk-number").addEventListener("click",Ln);ze("bulk-number-menu").addEventListener("keydown",e=>{if(e.key==="Escape"){e.preventDefault();Mn(true);return}if(!["ArrowDown","ArrowUp","Home","End"].includes(e.key))return;e.preventDefault();const t=An();if(!t.length)return;const n=t.indexOf(document.activeElement);let o=n;if(e.key==="Home")o=0;if(e.key==="End")o=t.length-1;if(e.key==="ArrowDown")o=(n+1+t.length)%t.length;if(e.key==="ArrowUp")o=(n-1+t.length)%t.length;t[o].focus()});document.addEventListener("click",e=>{const t=ze("bulk-number-menu");if(t.hidden||t.contains(e.target)||e.target===ze("bulk-number"))return;Mn(t.contains(document.activeElement))});for(const e of document.querySelectorAll("[data-bulk-orientation]")){e.addEventListener("click",()=>Sn(e.dataset.bulkOrientation))}ze("cut-back").addEventListener("click",()=>{Lt();ut("roll")});ze("roll-info-back").addEventListener("click",()=>ut(Oe.returnScreen));ze("roll-info-done").addEventListener("click",()=>{Lt();if(Oe.returnScreen==="cut")$t();ut(Oe.returnScreen)});ze("export-back").addEventListener("click",()=>ut(Oe.returnScreen));ze("contact-back").addEventListener("click",()=>{Lt();ut("roll")});ze("field-back").addEventListener("click",()=>{const e=Oe.editing?.returnScreen??"roll";Oe.editing=null;ut(e)});ze("field-done").addEventListener("click",()=>rn(false));ze("field-input").addEventListener("input",()=>{const e=Oe.editing;const t=ze("field-input");const n=e&&(e.key==="ap"&&["cut","bulk"].includes(e.scope)||e.key==="focal"&&["cut","bulk","roll"].includes(e.scope));if(n&&!V(e.acceptedInput,t.value))t.value=e.acceptedInput;if(e)e.acceptedInput=t.value;Xt()});ze("field-revert").addEventListener("click",()=>{const e=Oe.editing;if(!e||e.scope!=="cut")return;const t=Oe.items[Oe.currentCut];delete gt(t)[e.key];e.draft="";e.hasCutValue=false;Ut();kt()});ze("previous-cut").addEventListener("click",()=>{if(Oe.currentCut>0){Oe.currentCut-=1;$t();window.scrollTo(0,0)}});ze("next-cut").addEventListener("click",()=>{if(Oe.currentCut<Oe.items.length-1){Oe.currentCut+=1;$t();window.scrollTo(0,0)}});ze("replace-scan-button").addEventListener("click",()=>{mn("");an({title:"이 컷의 스캔을 교체할까요?",body:"회전·반전은 새로 맞춰야 해요.\n이전에 내보낸 파일은 그대로예요.",cancel:"취소",confirm:"교체하기",onCancel:()=>{},onConfirm:()=>He.click()})});He.addEventListener("change",async()=>{const e=Oe.items[Oe.currentCut];const t=He.files[0]??null;try{const n=await O(t);const o=T(e,n);if(!o.changed)return;Oe.photos[e.originalIndex]=o.photo;delete Oe.orientation[e.cutId];Be.clear();kt();$t();mn(o.message)}catch{$t();mn(q)}finally{He.value=""}});for(const e of document.querySelectorAll("[data-orientation]")){e.addEventListener("click",()=>{const t=Oe.items[Oe.currentCut];const n=Ct(t);if(e.dataset.orientation==="left")Oe.orientation[t.cutId]=Ce(n,-1);if(e.dataset.orientation==="right")Oe.orientation[t.cutId]=Ce(n,1);if(e.dataset.orientation==="flip")Oe.orientation[t.cutId]=we(n);$t()})}ze("dialog-cancel").addEventListener("click",()=>cn("cancel"));ze("dialog-confirm").addEventListener("click",()=>cn("confirm"));ze("dialog-layer").addEventListener("click",e=>{if(e.target===ze("dialog-layer")&&Oe.dialog?.dismissOnOutside)cn("dismiss")});for(const e of document.querySelectorAll("input[name=\"frame-mode\"]")){e.addEventListener("change",()=>{if(!e.checked)return;Oe.mode=e.value;kt();hn();pn()})}for(const e of document.querySelectorAll("[data-format]")){e.addEventListener("click",()=>{if(e.dataset.format==="webp"&&Oe.webpSupported===false){Vn("webp");return}Oe.exportFormat=e.dataset.format;if(Oe.exportFormat!=="webp"&&Oe.exportQuality==="lossless")Oe.exportQuality="high";if(Oe.exportFormat==="png")Oe.exportQuality="high";hn()})}for(const e of document.querySelectorAll("[data-contact-format]")){e.addEventListener("click",()=>{if(e.dataset.contactFormat==="webp"&&Oe.webpSupported===false){Vn("webp");return}Oe.contactFormat=e.dataset.contactFormat;if(Oe.contactFormat!=="webp"&&Oe.contactQuality==="lossless")Oe.contactQuality="high";Oe.contactFile=null;Nn()})}for(const e of document.querySelectorAll("[data-contact-quality]")){e.addEventListener("click",()=>{Oe.contactQuality=e.dataset.contactQuality;Oe.contactFile=null;Nn()})}ze("contact-header-enabled").addEventListener("change",async e=>{Oe.contactHeader=e.target.checked;await jn()});ze("contact-save").addEventListener("click",async()=>{try{await Fn(true)}catch(e){Rn(e.message)}});ze("contact-share").addEventListener("click",async()=>{try{const e=Oe.contactFile??await Fn(false);const t=new File([e.blob],e.name,{type:e.blob.type});if(!navigator.canShare?.({files:[t]}))throw new Error("이 브라우저에서는 모아 보기 파일을 공유할 수 없어요. 이미지로 저장해 주세요.");await navigator.share({files:[t]});Rn("");mn("사진 1장을 보냈어요.")}catch(e){Rn(e.name==="AbortError"?"공유를 취소했어요.":e.message)}});for(const e of document.querySelectorAll("[data-quality]")){e.addEventListener("click",()=>{Oe.exportQuality=e.dataset.quality;hn()})}for(const e of document.querySelectorAll("[data-digits]")){e.addEventListener("click",()=>{Oe.exportDigits=Number(e.dataset.digits);hn()})}ze("roll-frame-label").addEventListener("change",e=>{Oe.rollFrameLabel=e.target.checked;pn()});ze("rgb-histogram").addEventListener("change",e=>{Oe.rgbHistogram=e.target.checked;pn()});for(const e of document.querySelectorAll("[data-ratio]")){e.addEventListener("click",()=>{Oe.paddingRatio=e.dataset.ratio;hn();pn()})}ze("toggle-all-cuts").addEventListener("click",()=>{Oe.exportSelection=Oe.exportSelection.size===Oe.items.length?new Set:new Set(Oe.items.map(e=>e.frame));bn();pn()});Ze.addEventListener("click",async()=>{try{Ze.disabled=true;ft();const e=gn();Et(e);if(e.some(wt)){throw new Error("스캔 파일을 열 수 없어 내보내지 않았어요.")}mt("내보낼 사진을 만들고 있어요.",false,Ke);const t=performance.now();const n=tt.value||C();const o=await zn();const r=v(n);if(r.result!=="name")throw new Error("내보낼 파일 이름을 만들지 못했어요.");p(o.zip,r.name);const a=performance.now()-t;ft(o.photoOnlyFrames);Un(Oe.result);Oe.result={files:o.files.map(e=>({...e,selected:true})),elapsedMs:a,returnScreen:Oe.returnScreen,delivery:"download",shared:0};Kn();ut("result")}catch(e){mt(e.message,true,Ke)}finally{hn()}});Xe.addEventListener("click",async()=>{try{Xe.disabled=true;if(!Oe.shareSession){const e=I(Oe.result.files.filter(e=>e.selected));const t=M(e);if(!t){et.textContent="이 브라우저에서는 사진 파일을 공유할 수 없어요. ZIP 내려받기를 이용해 주세요.";et.hidden=false;return}Oe.shareSession={groups:t,groupIndex:0,shared:0,total:e.length}}const e=Oe.shareSession;const t=e.groups[e.groupIndex];await navigator.share({files:t});e.groupIndex+=1;e.shared+=t.length;Oe.result.delivery="share";Oe.result.shared=e.shared;mn(`사진 ${e.shared}장을 보냈어요.`);const n=`${e.total}장 중 ${e.shared}장을 넘겼어요.`;et.textContent=n;et.hidden=false;if(e.groupIndex<e.groups.length)Xe.textContent="다음 묶음 사진첩에 저장";else{Oe.shareSession=null;Xe.textContent="사진첩에 다시 저장"}}catch(e){et.textContent=e.name==="AbortError"?"공유를 취소했어요.":e.message;et.hidden=false}finally{yt()}});ze("toggle-all-results").addEventListener("click",()=>{const e=!Oe.result.files.every(e=>e.selected);for(const t of Oe.result.files)t.selected=e;Kn()});ze("result-done").addEventListener("click",()=>{const e=Oe.result?.returnScreen??"roll";Un(Oe.result);Oe.result=null;kt();if(e==="roll")Lt();else $t();ut(e)});for(const e of document.querySelectorAll("[data-app-preview]"))e.addEventListener("click",()=>Vn(e.dataset.appPreview));ze("app-preview-close").addEventListener("click",()=>{ze("app-preview-layer").hidden=true});window.addEventListener("pageshow",()=>{if(Oe.screen==="result")yt()});window.addEventListener("pagehide",()=>Be.clear());if(new URLSearchParams(location.search).get("demo")==="1"){Oe.photos=["scan_1.jpg","scan_2.jpg","scan_10.jpg"].map(e=>({name:e,bytes:new Uint8Array}));Oe.importFailures=[];Oe.roll={camera:"합성 카메라",lens:"50mm",film:"합성 필름",ei:"400"};Oe.records=[{n:1,ap:"f/5.6",sh:"1/250",focal:"50",ev:"+0.0"},{n:2,ap:"f/2.8",sh:"1/60",focal:"50"},{n:3,ap:"f/8",sh:"1/500",focal:"50",ev:"-0.5"}];Oe.cutValues=[{cutId:"scan_1.jpg",n:1,camera:"컷 전용 카메라"}];Lt();ut("roll")}
+import { TEMPLATE_CUT_PHOTO_COPY, templateCutPhotos, cutPhotoAccessibility } from "./core/template-cut-photo.js";
+import { cutNameRejectionLines } from "./core/cut-name-rejection-notice.js";
+import { readPhotoZipBlob, zipLimitMessageLines, WEB_ZIP_LIMITS, ZIP_ERROR_KIND_LIMIT } from "./adapters/zip.js";
+import { cleanShootingDate, parseCsvRecord, parseMarkdownRecord, recordUnreadEntries, unknownColumnsLine } from "./core/record.js";
+import { decodeTemplateBytes } from "./core/record-decode.js";
+import { matchCutsToPhotos, recordsByNumber } from "./core/match.js";
+import { applyZeroCut, zeroCutRecords } from "./core/template-zero-cut-apply.js";
+import {
+  TEMPLATE_ZERO_CUT_COPY, assessZeroCut, pairZeroCut, fieldAccessibility, scanAccessibility, scanCaption,
+} from "./core/template-zero-cut.js";
+import { applyPaddingRatioCanvas, downloadBytes, exportConfiguredZip } from "./core/export.js";
+import {
+  ROLL_NAME_RESERVED_MESSAGE, checkRollName, compactNumbers, groupExcludedLines, makeExportArchiveFilename,
+} from "./core/export-rules.js";
+import { evaluateInformationFramePhotoLimit, renderInformationFrame, showsRGBHistogramControl } from "./core/information-frame.js";
+import { defaultRollName } from "./core/default-roll-name.js";
+import { newZipRollState } from "./core/new-zip-roll-state.js";
+import { resolveCutField, resolveCutRecord } from "./core/roll-values.js";
+import { groupShareFiles, makeShareFiles } from "./core/share.js";
+import { shownPhotoDimensions } from "./core/image-format.js";
+import { JPEG_COMPLETENESS, judgeJpegCompleteness } from "./core/jpeg-completeness.js";
+import {
+  SCAN_REPLACED_MESSAGE, SCAN_REPLACEMENT_READ_FAILURE, SCAN_UNREADABLE_MESSAGE,
+  applyScanReplacement, stageScanReplacement,
+} from "./core/scan-replacement.js";
+import { normalizeBulb, parseManualRollFocalLength, sharedCopy, shouldShowExifReason } from "./core/value-rules.js";
+import { acceptsDecimalFieldEdit, prepareApertureInput } from "./core/decimal-input-filter.js";
+import { INTEGER_INPUT_LABELS, prepareIntegerFieldInput } from "./core/integer-input.js";
+import { inputSuggestionAsk } from "./core/input-suggestion.js";
+import {
+  moveSelection, planBulkShootingInfo, renumberByOrder, renumberSelection, reverseSelection, selectionIsContiguous, shiftSelection,
+} from "./core/multi-edit.js";
+import { contactSheetBlob, evaluateContactSheetLimit, renderContactSheet } from "./core/contact-sheet.js";
+import { webpEncoderReady } from "./adapters/webp-encoder.js";
+import {
+  TEMPLATE_CONFIRMATION_KIND, TEMPLATE_ROLL_FIELDS, replaceRecordCutName, rollMissingNumberLine, templateConfirmationNoticeLines, templateCutLine,
+} from "./core/template-import.js";
+import { SHOOTING_DATE_PROVENANCE, reprojectProviderShootingDates } from "./core/shooting-date-renumber.js";
+import {
+  ThumbnailBitmapCache, makeThumbnailBitmap, renderCachedThumbnail,
+} from "./core/thumbnail-cache.js";
+import {
+  BULK_STEP_NUMBER_CONFLICT_MESSAGE, FRAME_NUMBER_HELPER,
+  evaluateBulkStepNumbers, evaluateFrameNumberEdit, frameNumberMessage,
+} from "./core/frame-number-edit.js";
+import { evaluateMoveAfterNumber, MOVE_AFTER_NUMBER_MAX } from "./core/move-after-number.js";
+import {
+  defaultPhotoCorrection, flipPhotoCorrection, normalizePhotoCorrection, rotatePhotoCorrection,
+} from "./core/level-straighten.js";
+import { correctedPhotoCanvas, releaseCanvas } from "./core/photo-correction.js";
+import { UPDATE_NOTE } from "./core/update-note.js";
+
+document.querySelector("#update-note").textContent = `${UPDATE_NOTE.date} ${UPDATE_NOTE.text}`;
+
+const SHOOTING_DATE_INVALID_MESSAGE = "2026-09-27처럼 올바른 날짜를 입력해 주세요.";
+const SHOOTING_DATE_HELPER = "2026-09-27처럼 입력해요. 스캔 파일의 날짜는 쓰지 않아요.";
+const SHOOTING_DATE_PLACEHOLDER = "2024-05-17";
+
+const shootingFields = [
+  { key: "camera", label: "카메라", recent: true, placeholder: "예: Nikon FM2" },
+  { key: "lens", label: "렌즈", recent: true },
+  { key: "focal", label: "초점거리(mm)", placeholder: "숫자만 입력", reason: "focal" },
+  { key: "ap", label: "조리개", cutOnly: true, reason: "aperture" },
+  { key: "sh", label: "셔터", cutOnly: true, reason: "shutter" },
+  { key: "ev", label: "노출 보정", cutOnly: true },
+  { key: "film", label: "필름", recent: true },
+  { key: "maker", label: "필름 제조사", recent: true },
+  { key: "boxSpeed", label: "박스 감도", placeholder: "ISO 숫자만 입력", inputMode: "numeric" },
+  { key: "ei", label: "노출 지수(EI)", placeholder: "숫자만 입력", inputMode: "numeric" },
+  { key: "process", label: "현상 방식", choices: ["C-41", "ECN-2", "E-6", "B&W"] },
+  { key: "lab", label: "현상소", recent: true },
+  { key: "rollNumber", label: "롤 번호", placeholder: "숫자만 입력", inputMode: "numeric" },
+];
+const bulkShootingFields = [
+  { key: "date", label: "촬영일", placeholder: SHOOTING_DATE_PLACEHOLDER, inputMode: "numeric" },
+  ...shootingFields,
+];
+
+const rollGroups = [
+  ["", ["rollNumber"]],
+  ["카메라", ["camera", "lens", "focal"]],
+  ["필름", ["film", "maker", "boxSpeed", "ei"]],
+  ["현상", ["process", "lab"]],
+];
+
+const FRAME_NUMBER_INVALID = "1 이상의 프레임 번호를 입력해 주세요.";
+const FRAME_NUMBER_CONFLICT = "다른 컷과 번호가 겹쳐요. 다른 번호를 입력해 주세요.";
+
+function framePositionsProblem(positions) {
+  if (!positions) return FRAME_NUMBER_CONFLICT;
+  const frames = positions.map(({ frame }) => frame);
+  if (frames.some((frame) => !Number.isSafeInteger(frame) || frame < 1 || frame > MOVE_AFTER_NUMBER_MAX)) return FRAME_NUMBER_INVALID;
+  if (new Set(frames).size !== frames.length) return FRAME_NUMBER_CONFLICT;
+  return null;
+}
+
+const state = {
+  photos: [], importFailures: [], records: [], cutValues: [], roll: {}, items: [], mode: null,
+  screen: "start", returnScreen: "roll", presentation: "grid", columns: 3,
+  currentCut: 0, previewToken: 0, thumbnailToken: 0, shareSession: null,
+  orientation: {}, cutMeta: {}, recent: {}, editing: null, dialog: null, rollAskPending: true,
+  exportFormat: "jpeg", exportQuality: "high", exportDigits: 2, rollFrameLabel: false, rgbHistogram: false, paddingRatio: "original",
+  exportSelection: new Set(), webpSupported: null, result: null,
+  cutOrder: [], frameByCut: {}, bulkEditing: false, bulkSelection: new Set(), bulkDraft: {}, bulkAfterAction: false, bulkMessage: "",
+  contactFormat: "jpeg", contactQuality: "high", contactHeader: true, contactRender: null, contactFile: null, contactMessage: "",
+  importedRollKeys: new Set(), pendingRecord: null, templateGuideSeen: false, bulkNoticeTimer: null,
+  recordFileName: "", exampleActive: false, exampleRecordBytes: null,
+  appPreviewAvailable: { album: false, webp: true, large: true, contact: true, "zip-backup": true },
+};
+const thumbnailCache = new ThumbnailBitmapCache();
+const thumbnailRenderVersions = new WeakMap();
+
+const appPreviews = {
+  album: {
+    title: "롤 이름 앨범에 차례대로",
+    image: "./assets/app-previews/photos-album-order.png",
+    caption: "합성 롤의 사진이 1번부터 차례대로 들어간 앱 화면이에요.",
+  },
+  webp: {
+    title: "앱의 WebP 내보내기",
+    image: "./assets/app-previews/export-settings.png",
+    caption: "앱에서는 WebP 형식과 품질을 고르고 내보낼 수 있어요.",
+  },
+  large: {
+    title: "큰 사진도 원본 크기 그대로",
+    image: "./assets/app-previews/large-photo-frame.png",
+    caption: "합성 30MP급 사진에 원본 크기 그대로 액자를 넣은 결과예요.",
+  },
+  contact: {
+    title: "앱의 모아 보기",
+    image: "./assets/app-previews/contact-sheet.png",
+    caption: "합성 롤로 만든 앱의 모아 보기 결과예요.",
+  },
+  "zip-backup": {
+    title: "앱의 받은 ZIP 백업",
+    image: "./assets/app-previews/received-zip-backup.png",
+    caption: "앱에서는 받은 압축 파일을 바로 백업하고, 저장한 파일을 다시 고를 수 있어요.",
+  },
+};
+
+const byId = (id) => document.getElementById(id);
+const zipInput = byId("zip-input");
+const recordInput = byId("record-input");
+const replaceScanInput = byId("replace-scan-input");
+const dropZone = byId("drop-zone");
+const startStatus = byId("status");
+const exportStatus = byId("export-status");
+const exportReasons = byId("export-reasons");
+const cutList = byId("cut-list");
+const exportButton = byId("export-button");
+const previewWrap = byId("frame-preview-wrap");
+const previewCanvas = byId("frame-preview");
+const shareButton = byId("share-button");
+const shareProgress = byId("share-progress");
+const rollNameInput = byId("roll-name");
+const emptyRecordName = byId("record-name").textContent;
+const zipLimitLabel = `${WEB_ZIP_LIMITS.maxZipBytes / (1024 * 1024)}MB`;
+const largeZipAppLine = "앱에서는 현상소에서 받은 큰 ZIP도 그대로 넣을 수 있어요.";
+function zipLimitLines(limit) {
+  return [...zipLimitMessageLines(limit).slice(1), largeZipAppLine];
+}
+byId("zip-limit-note").textContent = `체험판은 ${zipLimitLabel}·사진 ${WEB_ZIP_LIMITS.maxEntryCount}장까지 받아요`;
+
+const orientationActionSelector = ".bulk-orientation-actions, .orientation-actions";
+let orientationLayoutFrame = 0;
+
+function labelWraps(button) {
+  const label = button.querySelector("span:not(.orientation-icon)");
+  if (!label) return false;
+  const range = document.createRange();
+  range.selectNodeContents(label);
+  const lines = new Set([...range.getClientRects()]
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .map((rect) => Math.round(rect.top * 2) / 2));
+  return lines.size > 1;
+}
+
+function updateOrientationActionLayouts() {
+  orientationLayoutFrame = 0;
+  const rows = [...document.querySelectorAll(orientationActionSelector)];
+  for (const row of rows) row.classList.remove("orientation-actions-stacked");
+  for (const row of rows) {
+    if (row.getClientRects().length === 0) continue;
+    row.classList.toggle("orientation-actions-stacked", [...row.children].some(labelWraps));
+  }
+}
+
+function scheduleOrientationActionLayouts() {
+  if (orientationLayoutFrame) return;
+  orientationLayoutFrame = requestAnimationFrame(updateOrientationActionLayouts);
+}
+
+window.addEventListener("resize", scheduleOrientationActionLayouts);
+document.fonts?.ready.then(scheduleOrientationActionLayouts);
+if (typeof ResizeObserver !== "undefined") {
+  const orientationLayoutObserver = new ResizeObserver(scheduleOrientationActionLayouts);
+  for (const row of document.querySelectorAll(orientationActionSelector)) orientationLayoutObserver.observe(row);
+}
+
+function showScreen(name) {
+  state.screen = name;
+  for (const screen of document.querySelectorAll("[data-screen]")) screen.hidden = screen.dataset.screen !== name;
+  window.scrollTo(0, 0);
+  scheduleOrientationActionLayouts();
+}
+
+function setStatus(message, error = false, target = state.screen === "start" ? startStatus : exportStatus, errorKind = null, errorLimit = null) {
+  const isZipLimit = errorKind === ZIP_ERROR_KIND_LIMIT;
+  target.textContent = isZipLimit ? [message, ...zipLimitLines(errorLimit)].join("\n") : message;
+  target.classList.toggle("error", error);
+  target.classList.toggle("limit-error", isZipLimit);
+}
+
+function setExportReasons(frames = []) {
+  const lines = groupExcludedLines(frames.map((frame) => ({ frame, reason: "frameTooLarge" })));
+  exportReasons.textContent = lines.map((line) => line.text).join(" ");
+  exportReasons.hidden = lines.length === 0;
+}
+
+function cutValues(item) {
+  return state.cutValues.find((record) => record.cutId === item.cutId) ?? null;
+}
+
+function ensureCutValues(item) {
+  let record = cutValues(item);
+  if (!record) {
+    record = { cutId: item.cutId, n: item.frame };
+    state.cutValues.push(record);
+  }
+  record.n = item.frame;
+  return record;
+}
+
+function combinedRecord(record, cut) {
+  return resolveCutRecord(state.roll, record, cut);
+}
+
+function refreshItems() {
+  const base = matchCutsToPhotos(state.photos, state.records).map((item, index) => {
+    const cutId = item.cutId ?? item.name;
+    if (!(cutId in state.frameByCut)) state.frameByCut[cutId] = item.frame;
+    return { ...item, cutId, originalIndex: index };
+  });
+  if (!state.cutOrder.length || state.cutOrder.some((cutId) => !base.some((item) => item.cutId === cutId))) {
+    state.cutOrder = base.map((item) => item.cutId);
+  }
+  const byCut = new Map(base.map((item) => [item.cutId, item]));
+  const recordByNumber = recordsByNumber(state.records);
+  state.items = state.cutOrder.map((cutId) => byCut.get(cutId)).filter(Boolean).map((item) => {
+    const frame = state.frameByCut[item.cutId] ?? item.frame;
+    const importedRecord = recordByNumber.get(frame) ?? null;
+    const shown = { ...item, frame, importedRecord };
+    const cutRecord = cutValues(shown);
+    return { ...shown, cutRecord, record: combinedRecord(importedRecord, cutRecord) };
+  });
+}
+
+function invalidateShareSession() {
+  state.shareSession = null;
+  shareButton.textContent = "사진첩에 저장";
+  shareProgress.hidden = true;
+  shareProgress.textContent = "";
+}
+
+function updateShareAvailability() {
+  const chosen = state.result?.files.filter((file) => file.selected) ?? [];
+  try {
+    shareButton.disabled = !chosen.length || !groupShareFiles(makeShareFiles(chosen));
+  } catch {
+    shareButton.disabled = true;
+  }
+}
+
+function rollIsEmpty() {
+  return shootingFields.filter((field) => !field.cutOnly).every((field) => !String(state.roll[field.key] ?? "").trim());
+}
+
+function photoBlob(item) {
+  return new Blob([item.bytes], { type: item.format === "png" ? "image/png" : "image/jpeg" });
+}
+
+function completenessBlocksExport(item) {
+  return item?.completeness === JPEG_COMPLETENESS.INCOMPLETE
+    || item?.completeness === JPEG_COMPLETENESS.UNDETERMINED
+    || item?.completeness === JPEG_COMPLETENESS.NOT_JPEG;
+}
+
+function reassessUndetermined(items) {
+  for (const item of items) {
+    if (item.completeness !== JPEG_COMPLETENESS.UNDETERMINED) continue;
+    const judgement = judgeJpegCompleteness(item.bytes);
+    item.completeness = judgement.state;
+    item.completenessReason = judgement.reason;
+  }
+}
+
+function photoCorrection(item) {
+  return item.cutId in state.orientation
+    ? normalizePhotoCorrection(state.orientation[item.cutId])
+    : defaultPhotoCorrection();
+}
+
+async function renderPhoto(container, item, maximum, token, label) {
+  container.textContent = "미리보기";
+  container.dataset.thumbnailState = "loading";
+  const version = (thumbnailRenderVersions.get(container) ?? 0) + 1;
+  thumbnailRenderVersions.set(container, version);
+  try {
+    const correction = photoCorrection(item);
+    const canvas = document.createElement("canvas");
+    canvas.setAttribute("aria-label", label);
+    await renderCachedThumbnail({
+      cache: thumbnailCache,
+      key: item.cutId,
+      load: async () => makeThumbnailBitmap(() => photoBlob(item), {
+        dimensions: await shownPhotoDimensions(item.bytes, item.width, item.height, item.format),
+      }),
+      canvas,
+      maximum,
+      correction,
+    });
+    if (token !== state.thumbnailToken || !container.isConnected || thumbnailRenderVersions.get(container) !== version) return;
+    container.replaceChildren(canvas);
+    container.dataset.thumbnailState = "ready";
+  } catch {
+    container.textContent = "미리보기 없음";
+    container.dataset.thumbnailState = "failed";
+  }
+}
+
+function renderRoll() {
+  closeBulkNumberMenu();
+  refreshItems();
+  const token = ++state.thumbnailToken;
+  const shownPresentation = state.bulkEditing ? "list" : state.presentation;
+  byId("photo-count").textContent = state.items.length;
+  byId("roll-title").textContent = rollNameInput.value.trim() || defaultRollName();
+  byId("roll-screen").classList.toggle("roll-screen-bulk", state.bulkEditing);
+  renderImportFailures();
+  byId("roll-normal-header").hidden = false;
+  byId("roll-controls").hidden = state.bulkEditing;
+  byId("bulk-edit-header").hidden = !state.bulkEditing;
+  byId("roll-idle-actions").hidden = state.bulkEditing;
+  byId("bulk-edit-controls").hidden = !state.bulkEditing;
+  byId("bulk-result").hidden = !state.bulkMessage;
+  byId("bulk-result").textContent = state.bulkMessage;
+  byId("bulk-edit-title").textContent = `${state.bulkSelection.size}컷 선택`;
+  byId("bulk-toggle-all").textContent = state.bulkSelection.size === state.items.length ? "전체 해제" : "전체 선택";
+  document.querySelector("[data-go-start]").setAttribute("aria-label", state.bulkEditing ? "여러 컷 편집 끝내기" : "처음으로");
+  cutList.className = shownPresentation === "grid" ? `cut-grid columns-${state.columns}` : "cut-list";
+  cutList.replaceChildren();
+  state.items.forEach((item, index) => {
+    const button = document.createElement(state.bulkEditing ? "label" : "button");
+    if (!state.bulkEditing) button.type = "button";
+    button.className = shownPresentation === "grid" ? "grid-cut" : `list-cut${state.bulkEditing ? " selecting" : ""}`;
+    if (!state.bulkEditing) button.addEventListener("click", () => openCut(index));
+    const photo = document.createElement("div");
+    photo.className = shownPresentation === "grid" ? "grid-photo" : "list-photo";
+    photo.dataset.cutId = item.cutId;
+    renderPhoto(photo, item, shownPresentation === "grid" ? 150 : 72, token, `${item.frame}번 컷 미리보기`);
+    if (shownPresentation === "grid") {
+      const number = document.createElement("span");
+      number.className = "grid-number";
+      number.textContent = String(item.frame);
+      button.append(photo, number);
+    } else {
+      const summary = document.createElement("span");
+      summary.className = "list-summary";
+      const title = document.createElement("strong");
+      title.textContent = `${item.frame}번 컷`;
+      const file = document.createElement("small");
+      file.textContent = `${String(index + 1).padStart(2, "0")} / ${String(state.items.length).padStart(2, "0")} · ${item.name}`;
+      summary.append(title, file);
+      button.append(photo, summary);
+      if (state.bulkEditing) {
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = state.bulkSelection.has(item.cutId);
+        checkbox.setAttribute("aria-label", `${item.frame}번 컷 선택`);
+        checkbox.addEventListener("change", () => {
+          if (state.bulkAfterAction) {
+            state.bulkSelection = new Set([item.cutId]);
+            state.bulkAfterAction = false;
+          } else if (checkbox.checked) state.bulkSelection.add(item.cutId);
+          else state.bulkSelection.delete(item.cutId);
+          state.bulkMessage = "";
+          renderRoll();
+        });
+        button.append(checkbox);
+      }
+    }
+    cutList.append(button);
+  });
+  updateBulkControls();
+  updateToggles();
+  updateShareAvailability();
+}
+
+function renderImportFailures() {
+  const section = byId("import-failures");
+  const failures = state.importFailures;
+  section.hidden = state.bulkEditing || failures.length === 0;
+  byId("import-failures-title").textContent = failures.length ? `읽지 못한 사진 ${failures.length}장은 빼고 가져와요.` : "";
+  const list = byId("import-failure-list");
+  list.replaceChildren();
+  for (const failure of failures) {
+    const row = document.createElement("article");
+    row.className = "import-failure-row";
+    const name = document.createElement("strong");
+    name.textContent = failure.name.replace(/\\/g, "/").split("/").pop();
+    const reason = document.createElement("p");
+    reason.textContent = failure.message;
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "text-button";
+    action.textContent = "다른 파일 선택";
+    action.addEventListener("click", () => zipInput.click());
+    row.append(name, reason, action);
+    list.append(row);
+  }
+}
+
+function selectedBulkItems() {
+  return state.items.filter((item) => state.bulkSelection.has(item.cutId));
+}
+
+function currentPositions() {
+  return state.items.map((item) => ({ cut: item.cutId, frame: item.frame }));
+}
+
+function updateBulkControls() {
+  const any = state.bulkSelection.size > 0;
+  for (const button of document.querySelectorAll("[data-bulk-orientation], .bulk-action-grid button")) button.disabled = !any;
+  byId("bulk-export").disabled = !any;
+}
+
+function updateToggles() {
+  for (const button of document.querySelectorAll("[data-presentation]")) {
+    button.classList.toggle("selected", button.dataset.presentation === state.presentation);
+  }
+  for (const button of document.querySelectorAll("[data-columns]")) {
+    button.classList.toggle("selected", Number(button.dataset.columns) === state.columns);
+    button.disabled = state.presentation === "list";
+  }
+  byId("column-toggle").classList.toggle("dimmed", state.presentation === "list");
+}
+
+function makeInfoRow({ label, value = "", source = "", action = "", emptyText = "", onClick, onRevert }) {
+  const row = document.createElement("div");
+  row.className = "info-row";
+  const main = document.createElement(onClick ? "button" : "div");
+  if (onClick) main.type = "button";
+  main.className = "info-row-main";
+  if (onClick) main.addEventListener("click", onClick);
+  const text = document.createElement("span");
+  text.className = "info-row-text";
+  const caption = document.createElement("span");
+  caption.className = "info-row-label";
+  caption.textContent = label;
+  const shown = document.createElement("span");
+  shown.className = value ? "info-row-value" : "info-row-value empty";
+  shown.textContent = value || emptyText;
+  text.append(caption, shown);
+  if (source) {
+    const sourceLine = document.createElement("small");
+    sourceLine.textContent = source;
+    text.append(sourceLine);
+  }
+  main.append(text);
+  if (onClick || action) {
+    const trailing = document.createElement("span");
+    trailing.className = "info-row-action";
+    trailing.textContent = action || "›";
+    main.append(trailing);
+  }
+  row.append(main);
+  if (onRevert) {
+    const revert = document.createElement("button");
+    revert.className = "row-revert";
+    revert.type = "button";
+    revert.textContent = "롤 값으로 되돌리기";
+    revert.addEventListener("click", onRevert);
+    row.append(revert);
+  }
+  return row;
+}
+
+function cutMeta(item) {
+  if (!state.cutMeta[item.cutId]) {
+    const providerAttached = Boolean(state.recordFileName);
+    state.cutMeta[item.cutId] = {
+      name: item.importedRecord?.cutName ?? "",
+      date: item.importedRecord?.date ?? "",
+      nameSource: item.importedRecord?.cutName ? "가져온 기록" : "",
+      dateSource: item.importedRecord?.date ? "가져온 기록" : "",
+      dateProvenance: providerAttached ? SHOOTING_DATE_PROVENANCE.provider : SHOOTING_DATE_PROVENANCE.none,
+    };
+  }
+  return state.cutMeta[item.cutId];
+}
+
+function openCut(index) {
+  state.currentCut = Math.max(0, Math.min(index, state.items.length - 1));
+  renderCut();
+  showScreen("cut");
+}
+
+function renderCut() {
+  refreshItems();
+  const item = state.items[state.currentCut];
+  if (!item) return;
+  const token = ++state.thumbnailToken;
+  byId("cut-position").textContent = `${String(state.currentCut + 1).padStart(2, "0")} / ${String(state.items.length).padStart(2, "0")}`;
+  byId("cut-roll-name").textContent = rollNameInput.value.trim() || defaultRollName();
+  renderPhoto(byId("cut-photo"), item, 720, token, `${item.frame}번 컷 큰 사진`);
+
+  const meta = cutMeta(item);
+  const cutInfoCard = byId("cut-info-card");
+  cutInfoCard.replaceChildren(
+    makeInfoRow({ label: "컷 이름", value: meta.name, source: meta.nameSource, emptyText: "—", action: meta.name ? "바꾸기" : "추가", onClick: () => openMetaEditor("name", "컷 이름") }),
+    makeInfoRow({ label: "컷 번호", value: String(item.frame), action: "바꾸기", onClick: () => openMetaEditor("frame", "컷 번호") }),
+    makeInfoRow({ label: "촬영일", value: meta.date, source: meta.dateSource, emptyText: "—", action: meta.date ? "바꾸기" : "추가", onClick: () => openMetaEditor("date", "촬영일") }),
+  );
+
+  byId("scan-info-card").replaceChildren(
+    makeInfoRow({ label: "파일 이름", value: item.name, emptyText: "—" }),
+    ...(completenessBlocksExport(item)
+      ? [makeInfoRow({ label: "원본 상태", value: SCAN_UNREADABLE_MESSAGE })]
+      : []),
+  );
+  byId("roll-info-hint").hidden = !rollIsEmpty();
+  const shootingCard = byId("shooting-info-card");
+  shootingCard.replaceChildren();
+  for (const field of shootingFields) {
+    const presentation = resolveCutField(state.roll, item.importedRecord, cutValues(item), field.key);
+    shootingCard.append(makeInfoRow({
+      label: field.label,
+      value: presentation.value,
+      emptyText: "—",
+      source: presentation.source,
+      action: presentation.value ? "바꾸기" : "추가",
+      onClick: () => openFieldEditor("cut", field),
+      onRevert: presentation.hasCutValue ? () => {
+        delete ensureCutValues(item)[field.key];
+        invalidateShareSession();
+        renderCut();
+      } : null,
+    }));
+  }
+  const memoCard = byId("cut-memo-card");
+  const memo = item.importedRecord?.note;
+  memoCard.hidden = !memo;
+  memoCard.replaceChildren(...(memo ? [makeInfoRow({ label: "메모", value: memo })] : []));
+  byId("previous-cut").disabled = state.currentCut === 0;
+  byId("next-cut").disabled = state.currentCut === state.items.length - 1;
+}
+
+function renderRollInfo() {
+  const root = byId("roll-info-groups");
+  root.replaceChildren();
+  for (const [title, keys] of rollGroups) {
+    const section = document.createElement("section");
+    section.className = "detail-group";
+    const heading = document.createElement("h2");
+    heading.textContent = title;
+    const card = document.createElement("div");
+    card.className = "info-card row-card";
+    for (const key of keys) {
+      const field = shootingFields.find((candidate) => candidate.key === key);
+      card.append(makeInfoRow({
+        label: field.label,
+        value: state.roll[key] ?? "",
+        source: state.importedRollKeys.has(key) ? "가져온 기록" : "",
+        onClick: () => openFieldEditor("roll", field),
+      }));
+    }
+    if (title) section.append(heading);
+    section.append(card);
+    root.append(section);
+  }
+  byId("roll-info-help").hidden = !rollIsEmpty();
+  const unmatched = state.records
+    .map((record) => record.n)
+    .filter((number) => number != null && !state.items.some((item) => item.frame === number));
+  const unmatchedLine = unmatched.length ? `맞는 컷이 없는 기록: ${compactNumbers(unmatched)}번` : "";
+  byId("record-unmatched").textContent = unmatchedLine;
+  byId("record-unmatched").hidden = !unmatchedLine;
+  byId("record-unmatched-help").hidden = !unmatchedLine;
+  byId("record-unmatched-fix").hidden = !unmatchedLine;
+  byId("example-record-import").hidden = !state.exampleActive;
+}
+
+function openRollInfo(returnScreen = state.screen) {
+  state.returnScreen = returnScreen;
+  renderRollInfo();
+  showScreen("roll-info");
+  if (!state.templateGuideSeen) showTemplateGuide();
+}
+
+function openMetaEditor(key, label) {
+  const item = state.items[state.currentCut];
+  const meta = cutMeta(item);
+  state.editing = {
+    scope: "meta", key, label, returnScreen: "cut", draft: key === "frame" ? String(item.frame) : meta[key] ?? "",
+    currentFrame: key === "frame" ? item.frame : null,
+  };
+  renderFieldEditor();
+  showScreen("field");
+}
+
+function openFieldEditor(scope, field) {
+  const item = state.items[state.currentCut];
+  let draft = "";
+  let inherited = "";
+  let hasCutValue = false;
+  if (scope === "roll") {
+    draft = state.roll[field.key] ?? "";
+  } else {
+    const presentation = resolveCutField(state.roll, item.importedRecord, cutValues(item), field.key);
+    draft = cutValues(item)?.[field.key] ?? "";
+    inherited = presentation.hasCutValue ? "" : presentation.value;
+    hasCutValue = presentation.hasCutValue;
+  }
+  state.editing = {
+    scope, field, key: field.key, label: field.label, returnScreen: scope === "roll" ? "roll-info" : "cut",
+    draft, original: draft, inherited, hasCutValue,
+  };
+  renderFieldEditor();
+  showScreen("field");
+}
+
+function openBulkFieldEditor(field) {
+  state.editing = {
+    scope: "bulk", field, key: field.key, label: field.label, returnScreen: "bulk-info",
+    draft: state.bulkDraft[field.key] ?? "", original: state.bulkDraft[field.key] ?? "", inherited: "", hasCutValue: false,
+  };
+  renderFieldEditor();
+  showScreen("field");
+}
+
+function openCommandEditor({ label, key, placeholder = "", inputMode = "text", onApply }) {
+  state.editing = { scope: "command", key, label, returnScreen: "roll", draft: "", inherited: placeholder, inputMode, onApply };
+  renderFieldEditor();
+  showScreen("field");
+}
+
+function renderBulkInfo() {
+  byId("bulk-info-title").textContent = `고른 ${state.bulkSelection.size}컷에 넣기`;
+  const root = byId("bulk-info-rows");
+  root.replaceChildren();
+  for (const field of bulkShootingFields) {
+    const value = state.bulkDraft[field.key] ?? "";
+    root.append(makeInfoRow({
+      label: field.label, value, emptyText: "—", action: value.trim() ? "바꾸기" : "추가",
+      onClick: () => openBulkFieldEditor(field),
+    }));
+  }
+  byId("bulk-info-done").disabled = !Object.values(state.bulkDraft).some((value) => String(value).trim());
+}
+
+function shownBulkValues() {
+  return Object.fromEntries(selectedBulkItems().map((item) => [
+    item.cutId,
+    Object.fromEntries(bulkShootingFields.map((field) => [
+      field.key, field.key === "date"
+        ? cutMeta(item).date
+        : resolveCutField(state.roll, item.importedRecord, cutValues(item), field.key).value,
+    ])),
+  ]));
+}
+
+function saveBulkInfo(replaceExisting) {
+  const plan = planBulkShootingInfo(shownBulkValues(), state.bulkDraft, replaceExisting);
+  for (const [cutId, changes] of Object.entries(plan.assignments)) {
+    const item = state.items.find((candidate) => candidate.cutId === cutId);
+    if (!item) continue;
+    const { date, ...shootingChanges } = changes;
+    if (date !== undefined) {
+      const meta = cutMeta(item);
+      meta.date = date;
+      meta.dateSource = "이 컷에만 입력";
+      meta.dateProvenance = SHOOTING_DATE_PROVENANCE.user;
+    }
+    if (Object.keys(shootingChanges).length) Object.assign(ensureCutValues(item), shootingChanges);
+  }
+  state.bulkEditing = false;
+  state.bulkSelection = new Set();
+  state.bulkAfterAction = false;
+  state.bulkDraft = {};
+  invalidateShareSession();
+  renderRoll();
+  showScreen("roll");
+  showBulkNotice(plan.resultText);
+}
+
+function requestBulkInfoSave() {
+  const plan = planBulkShootingInfo(shownBulkValues(), state.bulkDraft, false);
+  if (plan.collisionCutCount > 0) {
+    showDialog({
+      title: `이미 값이 있는 ${plan.collisionCutCount}컷도 바꿀까요?`, body: "",
+      cancel: "아니요", confirm: "바꾸기",
+      onCancel: () => saveBulkInfo(false), onConfirm: () => saveBulkInfo(true),
+    });
+  } else saveBulkInfo(false);
+}
+
+function renderFieldEditor() {
+  const editing = state.editing;
+  if (!editing) return;
+  byId("field-title").textContent = editing.label;
+  byId("field-input-label").textContent = editing.label;
+  const input = byId("field-input");
+  input.value = editing.draft;
+  editing.acceptedInput = input.value;
+  input.placeholder = isShootingDateEditor(editing)
+    ? SHOOTING_DATE_PLACEHOLDER
+    : editing.inherited || editing.field?.placeholder || "";
+  input.inputMode = editing.inputMode ?? editing.field?.inputMode ?? (["ap", "focal", "frame"].includes(editing.key) ? "decimal" : "text");
+  const helper = byId("field-helper");
+  helper.textContent = editing.scope === "meta" && editing.key === "frame"
+    ? FRAME_NUMBER_HELPER
+    : isShootingDateEditor(editing) ? SHOOTING_DATE_HELPER : "";
+  helper.hidden = !helper.textContent;
+  const choices = byId("field-choices");
+  choices.replaceChildren();
+  for (const choice of editing.field?.choices ?? []) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = choice;
+    button.addEventListener("click", () => { input.value = choice; editing.draft = choice; updateFieldMessage(); });
+    choices.append(button);
+  }
+  choices.hidden = choices.childElementCount === 0;
+  byId("field-revert").hidden = !(editing.scope === "cut" && editing.hasCutValue);
+  renderRecentValues();
+  updateFieldMessage();
+  requestAnimationFrame(() => input.focus());
+}
+
+function renderRecentValues() {
+  const editing = state.editing;
+  const values = editing.field?.recent ? (state.recent[editing.key] ?? []) : [];
+  const section = byId("recent-section");
+  const root = byId("recent-values");
+  root.replaceChildren();
+  for (const value of values.filter((candidate) => !(editing.field?.choices ?? []).includes(candidate))) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = value;
+    button.addEventListener("click", () => {
+      byId("field-input").value = value;
+      editing.draft = value;
+      finishFieldEdit(true);
+    });
+    root.append(button);
+  }
+  section.hidden = root.childElementCount === 0;
+}
+
+function isShootingDateEditor(editing) {
+  return editing?.key === "date" && ["meta", "bulk", "command"].includes(editing.scope);
+}
+
+function isRenumberStartEditor(editing) {
+  return editing?.scope === "command" && editing.key === "frame";
+}
+
+function isMoveAfterEditor(editing) {
+  return editing?.scope === "command" && editing.key === "move";
+}
+
+function evaluateCurrentMoveAfterNumber(value) {
+  return evaluateMoveAfterNumber(
+    value,
+    currentPositions().map(({ cut, frame }) => ({ id: cut, number: frame })),
+    state.bulkSelection,
+  );
+}
+
+function shootingDateEditResult(raw) {
+  const value = String(raw ?? "").trim();
+  return { value, valid: value === "" || cleanShootingDate(value) === value };
+}
+
+function updateFieldMessage() {
+  const editing = state.editing;
+  const message = byId("field-message");
+  const value = byId("field-input").value;
+  editing.draft = value;
+  const done = byId("field-done");
+  if (editing.scope === "meta" && editing.key === "frame") {
+    const result = evaluateFrameNumberEdit(
+      value,
+      editing.currentFrame,
+      new Set(currentPositions().map(({ frame }) => frame)),
+    );
+    editing.validationMessage = frameNumberMessage(result.messageKey) ?? "";
+    editing.validationValue = value;
+    done.disabled = !result.completeEnabled;
+  } else if (isRenumberStartEditor(editing)) {
+    const result = evaluateFrameNumberEdit(value, 1, new Set(), MOVE_AFTER_NUMBER_MAX);
+    editing.validationMessage = frameNumberMessage(result.messageKey) ?? "";
+    editing.validationValue = value;
+    done.disabled = !result.completeEnabled;
+  } else if (isMoveAfterEditor(editing)) {
+    const result = evaluateCurrentMoveAfterNumber(value);
+    editing.validationMessage = result.completeEnabled ? "" : result.messageText ?? "";
+    editing.validationValue = value;
+    done.disabled = !result.completeEnabled;
+  } else if (["cut", "bulk"].includes(editing.scope) && editing.key === "ap") {
+    done.disabled = value !== editing.original && prepareApertureInput(value).result === "rejected";
+  } else if (editing.scope === "roll" && editing.key === "focal") {
+    done.disabled = value !== editing.original && value.trim() !== "" && parseManualRollFocalLength(value) === null;
+  } else if (isShootingDateEditor(editing)) {
+    const result = shootingDateEditResult(value);
+    editing.validationMessage = result.valid ? "" : SHOOTING_DATE_INVALID_MESSAGE;
+    editing.validationValue = value;
+    done.disabled = !result.valid;
+  } else {
+    done.disabled = false;
+  }
+  if (editing.validationValue !== value) editing.validationMessage = "";
+  if (editing.validationMessage) {
+    message.textContent = editing.validationMessage;
+    message.classList.add("error-text");
+    message.hidden = false;
+    return;
+  }
+  message.classList.remove("error-text");
+  const reason = editing.field?.reason;
+  if (reason && shouldShowExifReason(reason, value)) {
+    message.textContent = sharedCopy("reason_text").text_ios;
+    message.hidden = false;
+  } else {
+    message.textContent = "";
+    message.hidden = true;
+  }
+}
+
+function currentRelatedValue(key) {
+  const editing = state.editing;
+  if (editing.scope === "roll") return state.roll[key] ?? "";
+  if (editing.scope === "bulk") return state.bulkDraft[key] ?? "";
+  const item = state.items[state.currentCut];
+  return resolveCutField(state.roll, item.importedRecord, cutValues(item), key).value;
+}
+
+function suggestionForEdit() {
+  const editing = state.editing;
+  if (editing.key !== "film" && editing.key !== "lens") return null;
+  const previousLens = editing.key === "lens" ? editing.original : currentRelatedValue("lens");
+  const previousFilm = editing.key === "film" ? editing.original : currentRelatedValue("film");
+  return inputSuggestionAsk({
+    previousLens,
+    newLens: editing.key === "lens" ? editing.draft : previousLens,
+    focal: currentRelatedValue("focal"),
+    previousFilm,
+    newFilm: editing.key === "film" ? editing.draft : previousFilm,
+    manufacturer: currentRelatedValue("maker"),
+    boxSpeed: currentRelatedValue("boxSpeed"),
+  });
+}
+
+function applySuggestedValues(target, suggestion) {
+  if (!suggestion) return;
+  const values = { ...suggestion.fills, ...suggestion.changes };
+  if (values.manufacturer) target.maker = values.manufacturer;
+  if (values.boxSpeed) target.boxSpeed = values.boxSpeed;
+  if (values.focal) target.focal = values.focal;
+}
+
+function applyFieldValue(value, extra = null) {
+  const editing = state.editing;
+  if (isShootingDateEditor(editing)) {
+    const result = shootingDateEditResult(value);
+    if (!result.valid) {
+      editing.validationMessage = SHOOTING_DATE_INVALID_MESSAGE;
+      editing.validationValue = value;
+      updateFieldMessage();
+      return;
+    }
+    value = result.value;
+  }
+  if (editing.scope === "command") {
+    if (editing.onApply(value) === false) return;
+  } else if (editing.scope === "meta") {
+    const item = state.items[state.currentCut];
+    const meta = cutMeta(item);
+    if (editing.key === "name" || editing.key === "date") {
+      meta[editing.key] = value.trim();
+      meta[`${editing.key}Source`] = value.trim() ? "이 컷에만 입력" : "";
+      if (editing.key === "date") meta.dateProvenance = value.trim()
+        ? SHOOTING_DATE_PROVENANCE.user : SHOOTING_DATE_PROVENANCE.deleted;
+    }
+    if (editing.key === "frame") {
+      const result = evaluateFrameNumberEdit(
+        value,
+        editing.currentFrame,
+        new Set(currentPositions().map(({ frame }) => frame)),
+      );
+      if (!result.completeEnabled) {
+        editing.validationMessage = frameNumberMessage(result.messageKey) ?? "";
+        editing.validationValue = value;
+        updateFieldMessage();
+        return;
+      }
+      const positions = currentPositions().map((position) => position.cut === item.cutId
+        ? { ...position, frame: result.value } : position);
+      const problem = framePositionsProblem(positions);
+      if (problem) {
+        editing.validationMessage = problem;
+        editing.validationValue = value;
+        updateFieldMessage();
+        return;
+      }
+      applyBulkPositions(positions);
+    }
+  } else if (editing.scope === "roll") {
+    if (value.trim()) state.roll[editing.key] = value;
+    else delete state.roll[editing.key];
+    state.importedRollKeys.delete(editing.key);
+    applySuggestedValues(state.roll, extra);
+  } else if (editing.scope === "bulk") {
+    if (value.trim()) state.bulkDraft[editing.key] = value.trim();
+    else delete state.bulkDraft[editing.key];
+    applySuggestedValues(state.bulkDraft, extra);
+  } else {
+    const item = state.items[state.currentCut];
+    const record = ensureCutValues(item);
+    if (value.trim()) record[editing.key] = value;
+    else delete record[editing.key];
+    applySuggestedValues(record, extra);
+  }
+  if (editing.field?.recent && value.trim()) {
+    const values = state.recent[editing.key] ?? [];
+    state.recent[editing.key] = [value.trim(), ...values.filter((candidate) => candidate !== value.trim())].slice(0, 5);
+  }
+  invalidateShareSession();
+  refreshItems();
+  if (editing.returnScreen === "roll-info") renderRollInfo();
+  else if (editing.returnScreen === "bulk-info") renderBulkInfo();
+  else if (editing.returnScreen === "roll") renderRoll();
+  else renderCut();
+  showScreen(editing.returnScreen);
+  state.editing = null;
+}
+
+function finishFieldEdit(fromRecent = false) {
+  const editing = state.editing;
+  if (!editing) return;
+  editing.draft = byId("field-input").value;
+  if (editing.scope !== "command" && editing.scope !== "meta" && INTEGER_INPUT_LABELS[editing.key]) {
+    const prepared = prepareIntegerFieldInput(editing.key, editing.draft, editing.original ?? "");
+    if (!prepared.accepted) {
+      editing.validationMessage = prepared.message;
+      editing.validationValue = editing.draft;
+      updateFieldMessage();
+      return;
+    }
+    editing.draft = prepared.value;
+  }
+  if (editing.scope === "roll" && editing.key === "focal" && editing.draft !== editing.original && editing.draft.trim()) {
+    const focal = parseManualRollFocalLength(editing.draft);
+    if (focal === null) return;
+    editing.draft = focal;
+  }
+  if (["cut", "bulk"].includes(editing.scope) && editing.key === "ap" && editing.draft !== editing.original) {
+    const prepared = prepareApertureInput(editing.draft);
+    if (prepared.result === "rejected") return;
+    editing.draft = prepared.stored ?? "";
+  }
+  const bulb = editing.key === "sh" ? normalizeBulb(editing.draft) : null;
+  if (bulb && bulb !== editing.draft.trim()) {
+    showDialog({
+      title: `셔터를 ${bulb}로 바꿀까요?`, body: sharedCopy("dialog_body").text_ios,
+      cancel: "아니요", confirm: "바꾸기",
+      onCancel: () => applyFieldValue(editing.draft), onConfirm: () => applyFieldValue(bulb),
+    });
+    return;
+  }
+  const ask = suggestionForEdit();
+  if (ask) {
+    showDialog({
+      title: ask.title, body: ask.body, cancel: "아니요", confirm: ask.accept,
+      onCancel: () => applyFieldValue(editing.draft), onConfirm: () => applyFieldValue(editing.draft, ask),
+    });
+    return;
+  }
+  applyFieldValue(editing.draft);
+  if (fromRecent) renderRecentValues();
+}
+
+function showDialog({ title, body, cancel, confirm, onCancel, onConfirm, onDismiss, dismissOnOutside = false }) {
+  state.dialog = { onCancel, onConfirm, onDismiss, dismissOnOutside };
+  byId("dialog-title").textContent = title;
+  byId("dialog-body").textContent = body;
+  byId("dialog-body").hidden = !body;
+  byId("dialog-options").hidden = true;
+  byId("dialog-options").replaceChildren();
+  byId("dialog-cancel").hidden = false;
+  byId("dialog-confirm").hidden = false;
+  byId("dialog-cancel").textContent = cancel;
+  byId("dialog-confirm").textContent = confirm;
+  byId("dialog-layer").hidden = false;
+  byId("dialog-confirm").focus();
+}
+
+function showOptionDialog(title, choices) {
+  state.dialog = { onCancel: () => {} };
+  byId("dialog-title").textContent = title;
+  byId("dialog-body").hidden = true;
+  const root = byId("dialog-options");
+  root.replaceChildren();
+  for (const choice of choices) {
+    if (choice.separatorBefore) {
+      const separator = document.createElement("hr");
+      separator.setAttribute("aria-hidden", "true");
+      root.append(separator);
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = choice.label;
+    button.disabled = Boolean(choice.disabled);
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      byId("dialog-layer").hidden = true;
+      state.dialog = null;
+      choice.action();
+    });
+    root.append(button);
+  }
+  root.hidden = false;
+  byId("dialog-cancel").hidden = false;
+  byId("dialog-cancel").textContent = "닫기";
+  byId("dialog-confirm").hidden = true;
+  byId("dialog-layer").hidden = false;
+  root.querySelector("button")?.focus();
+}
+
+function closeDialog(action) {
+  const dialog = state.dialog;
+  byId("dialog-layer").hidden = true;
+  state.dialog = null;
+  byId("dialog-body").hidden = false;
+  byId("dialog-options").hidden = true;
+  byId("dialog-confirm").hidden = false;
+  if (action === "confirm") dialog?.onConfirm?.();
+  else if (action === "dismiss") dialog?.onDismiss?.();
+  else dialog?.onCancel?.();
+}
+
+function openExampleSheet() {
+  byId("example-sheet-layer").hidden = false;
+  byId("example-sheet-close").focus();
+}
+
+function closeExampleSheet() {
+  byId("example-sheet-layer").hidden = true;
+}
+
+function showTemplateGuide() {
+  showDialog({
+    title: "촬영 기록 불러오기 안내",
+    body: "CSV, 마크다운, 텍스트 파일로 저장한 촬영 기록 메모를 읽어서 반영할 수 있어요.",
+    cancel: "예시 파일 받기",
+    confirm: "확인",
+    dismissOnOutside: true,
+    onCancel: () => { state.templateGuideSeen = true; openExampleSheet(); },
+    onConfirm: () => { state.templateGuideSeen = true; },
+    onDismiss: () => { state.templateGuideSeen = true; },
+  });
+}
+
+function showBulkNotice(message) {
+  if (state.bulkNoticeTimer) window.clearTimeout(state.bulkNoticeTimer);
+  state.bulkMessage = message;
+  byId("bulk-result").textContent = message;
+  byId("bulk-result").hidden = !message;
+  if (!message) return;
+  placeBulkNoticeAboveActions();
+  state.bulkNoticeTimer = window.setTimeout(() => {
+    state.bulkMessage = "";
+    byId("bulk-result").hidden = true;
+    state.bulkNoticeTimer = null;
+  }, 4000);
+}
+
+function placeBulkNoticeAboveActions() {
+  const notice = byId("bulk-result");
+  const screen = document.querySelector('[data-screen]:not([hidden])');
+  const actions = screen?.querySelector(".bottom-bar");
+  const bottom = actions ? Math.max(8, window.innerHeight - actions.getBoundingClientRect().top + 8) : 8;
+  notice.style.bottom = `${Math.round(bottom)}px`;
+}
+
+async function renderPreview() {
+  const token = ++state.previewToken;
+  const question = byId("preview-question");
+  const helper = byId("preview-helper");
+  const largeApp = byId("large-photo-app");
+  previewWrap.classList.remove("limit");
+  largeApp.hidden = true;
+  previewCanvas.hidden = true;
+  question.hidden = false;
+  helper.classList.toggle("visible", state.mode !== null);
+  helper.setAttribute("aria-hidden", state.mode === null ? "true" : "false");
+  if (state.mode === null || !state.items.length) {
+    question.innerHTML = "사진 아래에 카메라·필름 같은 촬영 정보를 넣을 수 있어요.<br>아래에서 고르면 여기에 미리보기가 나와요.";
+    return;
+  }
+  const fallback = state.items[0];
+  const item = currentExportItems()[0] ?? { ...fallback, record: { ...fallback.record, date: cutMeta(fallback).date }, correction: photoCorrection(fallback) };
+  if (state.mode !== "off" && !evaluateInformationFramePhotoLimit(item).allowed) {
+    question.textContent = "이 사진은 웹에서 원본 크기 그대로 액자를 넣기엔 커요.";
+    largeApp.hidden = !state.appPreviewAvailable.large;
+    previewWrap.classList.add("limit");
+    return;
+  }
+  try {
+    let source;
+    if (state.mode === "off") {
+      const corrected = await correctedPhotoCanvas(item);
+      try {
+        const scale = Math.min(1, 1200 / Math.max(corrected.width, corrected.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(corrected.width * scale));
+        canvas.height = Math.max(1, Math.round(corrected.height * scale));
+        canvas.getContext("2d").drawImage(corrected, 0, 0, canvas.width, canvas.height);
+        source = canvas;
+      } finally {
+        releaseCanvas(corrected);
+      }
+    } else {
+      const rendered = await renderInformationFrame(item, item.record, state.mode, item.frame, 0.9, state.rollFrameLabel, state.rgbHistogram);
+      source = applyPaddingRatioCanvas(rendered.canvas, state.paddingRatio, rendered.geometry.photoY, rendered.geometry.photoHeight);
+    }
+    if (token !== state.previewToken) return;
+    previewCanvas.width = source.width;
+    previewCanvas.height = source.height;
+    previewCanvas.getContext("2d").drawImage(source, 0, 0);
+    question.hidden = true;
+    previewCanvas.hidden = false;
+  } catch (error) {
+    if (token === state.previewToken) setStatus(error.message, true, exportStatus);
+  }
+}
+
+function currentExportItems() {
+  return state.items
+    .filter((item) => state.exportSelection.has(item.frame))
+    .map((item) => ({ ...item, record: { ...item.record, date: cutMeta(item).date }, date: cutMeta(item).date, correction: photoCorrection(item), cutName: cutMeta(item).name }));
+}
+
+function updateExportControls() {
+  for (const input of document.querySelectorAll('input[name="frame-mode"]')) input.checked = input.value === state.mode;
+  byId("roll-frame-row").hidden = state.mode === null || state.mode === "off";
+  byId("rgb-histogram-row").hidden = !showsRGBHistogramControl(state.mode);
+  byId("ratio-row").hidden = state.mode === null || state.mode === "off";
+  byId("roll-frame-label").checked = state.rollFrameLabel;
+  byId("rgb-histogram").checked = state.rgbHistogram;
+  for (const button of document.querySelectorAll("[data-ratio]")) button.classList.toggle("selected", button.dataset.ratio === state.paddingRatio);
+  for (const button of document.querySelectorAll("[data-format]")) button.classList.toggle("selected", button.dataset.format === state.exportFormat);
+  for (const button of document.querySelectorAll("[data-quality]")) button.classList.toggle("selected", button.dataset.quality === state.exportQuality);
+  for (const button of document.querySelectorAll("[data-digits]")) button.classList.toggle("selected", Number(button.dataset.digits) === state.exportDigits);
+  const qualityRow = byId("quality-row");
+  qualityRow.hidden = state.exportFormat === "png";
+  const lossless = qualityRow.querySelector('[data-quality="lossless"]');
+  lossless.hidden = state.exportFormat !== "webp";
+  byId("quality-toggle").classList.toggle("four", state.exportFormat === "webp");
+  byId("quality-toggle").classList.toggle("three", state.exportFormat !== "webp");
+  const chosen = state.exportSelection.size;
+  byId("selected-cut-count").textContent = `${chosen}컷 선택 (전체 ${state.items.length}컷)`;
+  byId("toggle-all-cuts").textContent = chosen === state.items.length ? "전체 해제" : "전체 선택";
+  const selected = currentExportItems();
+  const blocked = selected.some(completenessBlocksExport);
+  const blocker = state.mode === null
+    ? "사진만·간단히·자세히 중에서 하나를 골라 주세요."
+    : chosen === 0 ? "내보낼 컷을 골라 주세요."
+      : blocked ? "스캔 파일을 열 수 없어요." : "";
+  byId("export-blocker").textContent = blocker;
+  exportButton.disabled = state.mode === null || chosen === 0;
+  exportButton.textContent = `전체 ${chosen}장 내보내기`;
+}
+
+function renderExportCuts() {
+  const root = byId("export-cut-list");
+  root.replaceChildren();
+  const token = ++state.thumbnailToken;
+  for (const item of state.items) {
+    const row = document.createElement("label");
+    row.className = "export-cut-row";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = state.exportSelection.has(item.frame);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) state.exportSelection.add(item.frame); else state.exportSelection.delete(item.frame);
+      updateExportControls();
+      renderPreview();
+    });
+    const photo = document.createElement("span");
+    photo.className = "export-cut-row-photo";
+    renderPhoto(photo, item, 56, token, `${item.frame}번 컷 미리보기`);
+    const text = document.createElement("span");
+    text.className = "export-cut-row-text";
+    const title = document.createElement("strong");
+    title.textContent = `${item.frame}번 컷`;
+    const file = document.createElement("small");
+    file.textContent = item.name;
+    text.append(title, file);
+    row.append(checkbox, photo, text);
+    root.append(row);
+  }
+  updateExportControls();
+}
+
+async function probeWebpSupport() {
+  state.webpSupported = await webpEncoderReady();
+  byId("webp-app-badge").hidden = state.webpSupported;
+}
+
+function openExport(selectedCutIds = null) {
+  state.returnScreen = state.screen === "cut" ? "cut" : "roll";
+  refreshItems();
+  state.mode = null;
+  state.exportFormat = "jpeg";
+  state.exportQuality = "high";
+  state.exportDigits = 2;
+  state.rollFrameLabel = false;
+  state.rgbHistogram = false;
+  state.paddingRatio = "original";
+  state.exportSelection = new Set(state.returnScreen === "cut" ? [state.items[state.currentCut].frame]
+    : selectedCutIds ? state.items.filter((item) => selectedCutIds.has(item.cutId)).map((item) => item.frame)
+      : state.items.map((item) => item.frame));
+  exportStatus.textContent = "";
+  setExportReasons();
+  renderExportCuts();
+  renderPreview();
+  showScreen("export");
+  probeWebpSupport();
+}
+
+function openBulkEdit() {
+  state.bulkEditing = true;
+  state.bulkSelection = new Set();
+  state.bulkAfterAction = false;
+  state.bulkMessage = "";
+  renderRoll();
+  showScreen("roll");
+}
+
+function applyBulkPositions(positions) {
+  const problem = framePositionsProblem(positions);
+  if (problem) {
+    showBulkNotice(problem);
+    return false;
+  }
+  const previousFrames = { ...state.frameByCut };
+  const recordsBefore = recordsByNumber(state.records);
+  state.cutOrder = positions.map(({ cut }) => cut);
+  state.frameByCut = Object.fromEntries(positions.map(({ cut, frame }) => [cut, frame]));
+  refreshItems();
+  // A record-derived cut name belongs to the record's number, so it follows the cut's new number.
+  for (const item of state.items) {
+    const meta = cutMeta(item);
+    Object.assign(meta, replaceRecordCutName(meta, recordsBefore.get(previousFrames[item.cutId])?.cutName, item.importedRecord?.cutName));
+  }
+  reprojectTemplateDates();
+  state.bulkAfterAction = true;
+  state.bulkMessage = "";
+  invalidateShareSession();
+  renderRoll();
+  return true;
+}
+
+function applyBulkStep(amount) {
+  const before = currentPositions();
+  const result = evaluateBulkStepNumbers(
+    Object.fromEntries(before.map(({ cut, frame }) => [cut, frame])),
+    state.bulkSelection,
+    amount,
+  );
+  if (!result.changed) {
+    showBulkNotice(result.result === "invalid" ? frameNumberMessage("NUMBER_AT_LEAST_ONE") : BULK_STEP_NUMBER_CONFLICT_MESSAGE);
+    return false;
+  }
+  const positions = shiftSelection(before, [...state.bulkSelection], amount);
+  return applyBulkPositions(positions);
+}
+
+function applyMoveAfterResult(result) {
+  return applyBulkPositions(result.order.map((cut) => ({ cut, frame: result.numbers[cut] })));
+}
+
+function reprojectTemplateDates() {
+  const projected = reprojectProviderShootingDates(
+    state.items.map((item) => {
+      const meta = cutMeta(item);
+      return { cutId: item.cutId, frame: item.frame, date: meta.date, dateProvenance: meta.dateProvenance };
+    }),
+    state.records.map((record) => ({ frame: record.n, date: record.date ?? "" })),
+  );
+  for (const result of projected) {
+    const meta = state.cutMeta[result.cutId];
+    if (meta?.dateProvenance !== SHOOTING_DATE_PROVENANCE.provider) continue;
+    meta.date = result.date;
+    meta.dateSource = result.date ? "가져온 기록" : "";
+  }
+}
+
+function rotateBulk(kind) {
+  const selected = selectedBulkItems();
+  for (const item of selected) {
+    const current = photoCorrection(item);
+    let next = current;
+    if (kind === "left") next = rotatePhotoCorrection(current, -1);
+    if (kind === "right") next = rotatePhotoCorrection(current, 1);
+    if (kind === "flip") next = flipPhotoCorrection(current);
+    state.orientation[item.cutId] = next;
+  }
+  state.bulkAfterAction = true;
+  state.bulkMessage = "";
+  invalidateShareSession();
+  const token = state.thumbnailToken;
+  const photos = new Map([...cutList.querySelectorAll(".list-photo")].map((photo) => [photo.dataset.cutId, photo]));
+  for (const item of selected) {
+    const photo = photos.get(item.cutId);
+    if (photo) renderPhoto(photo, item, 72, token, `${item.frame}번 컷 미리보기`);
+  }
+}
+
+function openBulkNumberMenu() {
+  const selected = [...state.bulkSelection];
+  const reverseDisabled = selected.length < 2 || !selectionIsContiguous(currentPositions(), selected);
+  const choices = [
+    { label: "+1", action: () => applyBulkStep(1) },
+    { label: "−1", action: () => applyBulkStep(-1) },
+    { label: "맨 앞으로", action: () => applyBulkPositions(moveSelection(currentPositions(), selected, 0)) },
+    { label: "맨 뒤로", action: () => applyBulkPositions(moveSelection(currentPositions(), selected, state.items.length)) },
+    { label: "번호 새로 매기기…", separatorBefore: true, action: () => openCommandEditor({
+      label: "컷 번호 다시 매기기", key: "frame", placeholder: "시작 번호", inputMode: "numeric",
+      onApply: (value) => {
+        const parsed = evaluateFrameNumberEdit(value, 1, new Set(), MOVE_AFTER_NUMBER_MAX);
+        if (!parsed.completeEnabled) {
+          state.editing.validationMessage = frameNumberMessage(parsed.messageKey) ?? "";
+          state.editing.validationValue = value;
+          updateFieldMessage();
+          return false;
+        }
+        const positions = renumberSelection(currentPositions(), selected, parsed.value);
+        const problem = framePositionsProblem(positions);
+        if (problem) {
+          state.editing.validationMessage = problem;
+          state.editing.validationValue = value;
+          updateFieldMessage();
+          return false;
+        }
+        return applyBulkPositions(positions);
+      },
+    }) },
+    { label: "다른 컷 뒤로 옮기기…", action: () => openCommandEditor({
+      label: "옮기기", key: "move", placeholder: "컷 번호", inputMode: "numeric",
+      onApply: (value) => {
+        const result = evaluateCurrentMoveAfterNumber(value);
+        if (!result.completeEnabled) {
+          state.editing.validationMessage = result.messageText ?? "";
+          state.editing.validationValue = value;
+          updateFieldMessage();
+          return false;
+        }
+        if (result.kind === "move_after") return applyMoveAfterResult(result);
+        // Cancel leaves the numbers unchanged.
+        showDialog({
+          title: "컷 번호 바꾸기", body: result.messageText, cancel: "취소", confirm: result.kind === "overlap_shift" ? "뒤 번호 밀기" : "새 번호 붙이기",
+          onCancel: () => {},
+          onConfirm: () => {
+            if (applyMoveAfterResult(result)) {
+              state.editing = null;
+              showScreen("roll");
+            }
+          },
+        });
+        return false;
+      },
+    }) },
+    {
+      label: "순서 뒤집기", separatorBefore: true, disabled: reverseDisabled,
+      action: () => applyBulkPositions(reverseSelection(currentPositions(), selected)),
+    },
+  ];
+  const root = byId("bulk-number-menu");
+  root.replaceChildren();
+  for (const choice of choices) {
+    if (choice.separatorBefore) {
+      const separator = document.createElement("hr");
+      separator.setAttribute("aria-hidden", "true");
+      root.append(separator);
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "menuitem");
+    button.textContent = choice.label;
+    button.disabled = Boolean(choice.disabled);
+    button.setAttribute("aria-disabled", String(button.disabled));
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      closeBulkNumberMenu();
+      choice.action();
+    });
+    root.append(button);
+  }
+  root.hidden = false;
+  byId("bulk-number").setAttribute("aria-expanded", "true");
+  bulkNumberMenuItems()[0]?.focus();
+}
+
+function bulkNumberMenuItems() {
+  return [...byId("bulk-number-menu").querySelectorAll('[role="menuitem"]:not(:disabled)')];
+}
+
+function closeBulkNumberMenu(restoreFocus = false) {
+  const root = byId("bulk-number-menu");
+  if (root.hidden) return;
+  root.hidden = true;
+  byId("bulk-number").setAttribute("aria-expanded", "false");
+  if (restoreFocus) byId("bulk-number").focus();
+}
+
+function contactHeaderParts() {
+  const left = [rollNameInput.value.trim() || defaultRollName(), state.roll.camera, state.roll.film]
+    .map((value) => String(value ?? "").trim()).filter(Boolean).join(" · ");
+  const dates = state.items.map((item) => cutMeta(item).date).filter(Boolean).sort();
+  const dateText = dates.length ? (dates[0] === dates.at(-1)
+    ? `${dates[0].replaceAll("-", ".")}.`
+    : `${dates[0].replaceAll("-", ".")}. - ${dates.at(-1).replaceAll("-", ".")}.`) : "";
+  return { left, right: [dateText, `${state.items.length}컷`].filter(Boolean).join(" · ") };
+}
+
+async function renderContact() {
+  const token = ++state.previewToken;
+  state.contactRender = null;
+  state.contactFile = null;
+  updateContactControls();
+  refreshItems();
+  byId("contact-roll-name").textContent = rollNameInput.value.trim() || defaultRollName();
+  byId("contact-loading").hidden = false;
+  byId("contact-canvas").hidden = true;
+  byId("contact-limit").hidden = true;
+  const limit = evaluateContactSheetLimit(state.items.length, state.contactHeader);
+  if (!limit.allowed) {
+    byId("contact-loading").hidden = true;
+    byId("contact-limit").hidden = false;
+    byId("contact-app-preview").hidden = !state.appPreviewAvailable.contact;
+    state.contactRender = null;
+    updateContactControls();
+    return;
+  }
+  const result = await renderContactSheet(state.items, {
+    header: state.contactHeader ? contactHeaderParts() : null,
+    corrections: state.orientation,
+  });
+  if (token !== state.previewToken || state.screen !== "contact") return;
+  state.contactRender = result;
+  const canvas = byId("contact-canvas");
+  canvas.width = result.canvas.width;
+  canvas.height = result.canvas.height;
+  canvas.getContext("2d").drawImage(result.canvas, 0, 0);
+  canvas.hidden = false;
+  byId("contact-loading").hidden = true;
+  byId("contact-result").textContent = state.contactMessage;
+  updateContactControls();
+}
+
+function updateContactControls() {
+  for (const button of document.querySelectorAll("[data-contact-format]")) button.classList.toggle("selected", button.dataset.contactFormat === state.contactFormat);
+  for (const button of document.querySelectorAll("[data-contact-quality]")) button.classList.toggle("selected", button.dataset.contactQuality === state.contactQuality);
+  byId("contact-quality-row").hidden = state.contactFormat === "png";
+  const lossless = byId("contact-quality").querySelector('[data-contact-quality="lossless"]');
+  lossless.hidden = state.contactFormat !== "webp";
+  byId("contact-quality").classList.toggle("four", state.contactFormat === "webp");
+  byId("contact-quality").classList.toggle("three", state.contactFormat !== "webp");
+  byId("contact-header-enabled").checked = state.contactHeader;
+  const disabled = !state.contactRender?.canvas;
+  byId("contact-save").disabled = disabled;
+  byId("contact-share").disabled = disabled;
+}
+
+function setContactResult(message) {
+  state.contactMessage = message;
+  byId("contact-result").textContent = message;
+}
+
+async function makeContactFile(download = false) {
+  if (!state.contactRender?.canvas) return null;
+  const started = performance.now();
+  const quality = { high: 0.85, balanced: 0.75, small: 0.65 }[state.contactQuality] ?? 0.85;
+  const blob = await contactSheetBlob(state.contactRender.canvas, state.contactFormat, quality, state.contactQuality === "lossless");
+  const extension = { jpeg: "jpg", webp: "webp", png: "png" }[state.contactFormat];
+  const name = `${rollNameInput.value.trim() || defaultRollName()}_contact.${extension}`;
+  const elapsedMs = performance.now() - started;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (download) downloadBytes(bytes, name, blob.type);
+  state.contactFile = { blob, name, elapsedMs };
+  setContactResult(state.exampleActive ? `웹 모아 보기 · ${name}` : `웹 모아 보기 · ${(elapsedMs / 1000).toFixed(2)}초 · ${name}`);
+  return state.contactFile;
+}
+
+async function openContactSheet() {
+  state.contactFormat = "jpeg";
+  state.contactQuality = "high";
+  state.contactHeader = true;
+  state.contactFile = null;
+  setContactResult("");
+  showScreen("contact");
+  probeWebpSupport();
+  await renderContact();
+}
+
+async function receiveZip(file, { askRollInfo = true } = {}) {
+  try {
+    setStatus("ZIP을 읽고 있어요.", false, startStatus);
+    const photos = await readPhotoZipBlob(file);
+    thumbnailCache.clear();
+    const { rollName, ...resetState } = newZipRollState(state);
+    Object.assign(state, resetState);
+    rollNameInput.value = rollName;
+    byId("record-name").textContent = emptyRecordName;
+    byId("record-name").classList.remove("error-text");
+    state.photos = photos;
+    state.importFailures = photos.failures ?? [];
+    state.exampleActive = false;
+    state.exampleRecordBytes = null;
+    state.cutOrder = [];
+    state.frameByCut = {};
+    state.cutValues = [];
+    state.cutMeta = {};
+    state.orientation = {};
+    state.bulkEditing = false;
+    state.bulkSelection = new Set();
+    state.rollAskPending = askRollInfo;
+    invalidateShareSession();
+    renderRoll();
+    showScreen("roll");
+    if (state.rollAskPending && photos.length > 0 && rollIsEmpty()) {
+      state.rollAskPending = false;
+      showDialog({
+        title: "롤 정보를 넣을까요?",
+        body: "카메라·필름 같은 값을 한 번 넣으면 모든 컷에 들어가요.\n몰라도 괜찮아요. 안 넣어도 사진은 그대로 내보낼 수 있어요.",
+        cancel: "나중에", confirm: "롤 정보 넣기",
+        onCancel: () => {}, onConfirm: () => openRollInfo("roll"),
+      });
+    }
+    return true;
+  } catch (error) {
+    thumbnailCache.clear();
+    state.photos = [];
+    refreshItems();
+    showScreen("start");
+    setStatus(error.message, true, startStatus, error.kind, error.limit);
+    return false;
+  }
+}
+
+function numberFromExampleName(name) {
+  const value = Number(String(name).match(/(\d+)(?=\.[^.]+$)/)?.[1]);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+async function startHanriverExample() {
+  const button = byId("shifted-demo");
+  button.disabled = true;
+  setStatus("합성 예시를 열고 있어요.", false, startStatus);
+  try {
+    const { hanriverRollExampleBytes } = await import("./examples/hanriver-roll.js");
+    const { zipBytes, recordBytes } = hanriverRollExampleBytes();
+    const opened = await receiveZip(new File([zipBytes], "hanriver-roll.zip", { type: "application/zip" }), { askRollInfo: false });
+    if (!opened) return;
+    state.exampleActive = true;
+    state.exampleRecordBytes = recordBytes;
+    state.frameByCut = Object.fromEntries(state.photos.map((photo) => [photo.name, numberFromExampleName(photo.name)]));
+    refreshItems();
+    renderRoll();
+  } catch (error) {
+    showScreen("start");
+    setStatus(error.message, true, startStatus);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// Dialog-only choice; dismissal never mutates the pending review or imported values.
+let recordZeroCutChoice = null;
+
+function closeRecordZeroCut() {
+  byId("record-zero-cut-layer").hidden = true;
+  byId("record-zero-cut").replaceChildren();
+  recordZeroCutChoice = null;
+  if (state.pendingRecord) byId("record-confirm").focus();
+}
+
+function requestRecordImport() {
+  const parsed = state.pendingRecord?.parsed;
+  if (!parsed) return;
+  if (parsed.roll.name && checkRollName(parsed.roll.name).reason === "reserved") return;
+  const assessment = Array.isArray(parsed.cutNumberRaws)
+    ? assessZeroCut(zeroCutRecords(parsed.cuts, parsed.cutNumberRaws), state.photos.length) : null;
+  if (assessment?.ask) openRecordZeroCut(parsed);
+  else confirmRecordImport();
+}
+
+function openRecordZeroCut(parsed) {
+  const root = byId("record-zero-cut");
+  root.replaceChildren();
+  recordZeroCutChoice = null;
+  const confirm = byId("record-zero-cut-import");
+  confirm.removeAttribute("aria-describedby");
+  if (!Array.isArray(parsed.cutNumberRaws)) return;
+  const records = zeroCutRecords(parsed.cuts, parsed.cutNumberRaws);
+  const scanCount = state.photos.length;
+  const assessment = assessZeroCut(records, scanCount);
+  if (!assessment.ask) return;
+  const choice = { pending: state.pendingRecord, selectedIndex: null };
+  recordZeroCutChoice = choice;
+  byId("record-zero-cut-layer").hidden = false;
+  const cancelLabel = document.createElement("span");
+  cancelLabel.textContent = byId("record-cancel").textContent;
+  byId("record-zero-cut-cancel").replaceChildren(cancelLabel);
+  const importLabel = document.createElement("span");
+  importLabel.textContent = byId("record-confirm").textContent;
+  confirm.replaceChildren(importLabel);
+  const text = (tag, value, className = "") => {
+    const element = document.createElement(tag);
+    element.textContent = value;
+    element.className = className;
+    return element;
+  };
+  const title = text("h2", TEMPLATE_ZERO_CUT_COPY["TXT-UI-0391"]);
+  title.id = "record-zero-cut-title";
+  root.append(title, text("p", TEMPLATE_ZERO_CUT_COPY["TXT-UI-0392"], "muted"));
+  const previews = document.createElement("div");
+  previews.className = "record-zero-cut-previews";
+  for (const [index, item] of state.items.slice(0, 3).entries()) {
+    const preview = document.createElement("div");
+    preview.setAttribute("role", "img");
+    preview.setAttribute("aria-label", scanAccessibility(index + 1));
+    const photo = document.createElement("div");
+    photo.className = "record-zero-cut-photo";
+    preview.append(text("span", String(index + 1)), photo);
+    previews.append(preview);
+    // Attach before renderPhoto checks isConnected after decoding.
+    root.append(previews);
+    void renderPhoto(photo, item, 256, state.thumbnailToken, scanAccessibility(index + 1));
+  }
+  root.append(text("p", scanCaption(scanCount), "record-zero-cut-caption"));
+  root.append(text("p", TEMPLATE_ZERO_CUT_COPY["TXT-UI-0393"]));
+  const field = document.createElement("button");
+  field.type = "button";
+  field.id = "record-zero-cut-field";
+  field.className = "record-zero-cut-field secondary";
+  field.setAttribute("aria-haspopup", "menu");
+  field.setAttribute("aria-controls", "record-zero-cut-menu");
+  field.setAttribute("aria-expanded", "false");
+  const fieldValue = text("span", TEMPLATE_ZERO_CUT_COPY["TXT-UI-0396"]);
+  const arrow = text("span", "⌄");
+  arrow.setAttribute("aria-hidden", "true");
+  field.append(fieldValue, arrow);
+  const menu = document.createElement("div");
+  menu.id = "record-zero-cut-menu";
+  menu.className = "record-zero-cut-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-labelledby", field.id);
+  menu.hidden = true;
+  const result = document.createElement("div");
+  result.className = "record-zero-cut-result";
+  result.setAttribute("aria-live", "polite");
+  const disabledReason = text("span", TEMPLATE_ZERO_CUT_COPY["TXT-UI-0406"], "visually-hidden");
+  disabledReason.id = "record-zero-cut-disabled";
+  function closeMenu() {
+    menu.hidden = true;
+    field.setAttribute("aria-expanded", "false");
+  }
+  function update() {
+    const selected = assessment.options.find((option) => option.index === choice.selectedIndex);
+    fieldValue.textContent = selected?.text ?? TEMPLATE_ZERO_CUT_COPY["TXT-UI-0396"];
+    field.setAttribute("aria-label", fieldAccessibility(selected?.text));
+    confirm.disabled = !selected;
+    if (!selected) confirm.setAttribute("aria-describedby", disabledReason.id);
+    else confirm.removeAttribute("aria-describedby");
+    menu.replaceChildren();
+    for (const option of assessment.options) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("role", "menuitemradio");
+      const isSelected = option.index === choice.selectedIndex;
+      button.setAttribute("aria-checked", String(isSelected));
+      button.setAttribute("aria-label", [option.text,
+        isSelected ? TEMPLATE_ZERO_CUT_COPY["TXT-UI-0405"] : null, option.explanation].filter(Boolean).join(", "));
+      const label = text("span", option.text);
+      if (option.explanation !== null) label.append(text("small", option.explanation));
+      button.append(label);
+      if (isSelected) {
+        const check = text("span", "✓");
+        check.setAttribute("aria-hidden", "true");
+        button.append(check);
+      }
+      button.addEventListener("click", () => {
+        choice.selectedIndex = option.index;
+        closeMenu();
+        update();
+        field.focus();
+      });
+      menu.append(button);
+    }
+    result.replaceChildren();
+    if (selected) {
+      const pairing = pairZeroCut(records, scanCount, selected.index);
+      for (const line of [pairing.pairText, pairing.noticeText, pairing.detachedText, pairing.unmatchedText]) {
+        if (line === null) continue;
+        const paragraph = text("p", "");
+        // Keep complete number + unit words together without changing literal text.
+        for (const part of line.split(/([0-9]+[\p{L}]+)/gu)) {
+          paragraph.append(/[0-9]+[\p{L}]+/u.test(part)
+            ? text("span", part, "number-unit") : document.createTextNode(part));
+        }
+        paragraph.setAttribute("aria-label", line);
+        result.append(paragraph);
+      }
+    }
+  }
+  field.addEventListener("click", () => {
+    menu.hidden = !menu.hidden;
+    field.setAttribute("aria-expanded", String(!menu.hidden));
+    if (!menu.hidden) menu.querySelector("button")?.focus();
+  });
+  menu.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeRecordZeroCut();
+    } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      const buttons = [...menu.querySelectorAll("button")];
+      const current = buttons.indexOf(document.activeElement);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+        : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[next]?.focus();
+    }
+  });
+  root.append(field, menu, result, disabledReason);
+  update();
+  field.focus();
+}
+
+function renderRecordConfirmation() {
+  const pending = state.pendingRecord;
+  if (!pending) return;
+  const { parsed, fileName, unreadRaw } = pending;
+  byId("record-confirm-name").textContent = fileName;
+  const rollRoot = byId("record-roll-values");
+  rollRoot.replaceChildren();
+  for (const [key, label] of TEMPLATE_ROLL_FIELDS) {
+    const row = document.createElement("div");
+    row.className = "template-line";
+    const name = document.createElement("span");
+    name.textContent = label;
+    const value = document.createElement("span");
+    value.textContent = parsed.roll[key] ?? "—";
+    row.append(name, value);
+    if (key === "name" && parsed.roll[key] && checkRollName(parsed.roll[key]).reason === "reserved") {
+      // A reserved Roll name disables import.
+      const message = document.createElement("p");
+      message.className = "field-message error-text";
+      message.textContent = ROLL_NAME_RESERVED_MESSAGE;
+      row.append(message);
+    }
+    rollRoot.append(row);
+  }
+
+  const cutRoot = byId("record-cut-values");
+  cutRoot.replaceChildren();
+  // CSV keeps one number confirmation per numberless cut, in physical-line order.
+  const numberlessRows = (parsed.confirmations ?? [])
+    .filter((entry) => entry.kind === TEMPLATE_CONFIRMATION_KIND.ambiguousNumber && entry.field === "number")
+    .sort((left, right) => left.lineNumber - right.lineNumber);
+  let numberlessIndex = 0;
+  const records = parsed.cuts.map((cut, index) => {
+    const fallbackRaw = cut.n == null ? numberlessRows[numberlessIndex++]?.rawValue : "";
+    return { n: cut.n, numberRaw: parsed.cutNumberRaws?.[index] ?? fallbackRaw };
+  });
+  const photos = templateCutPhotos(records, state.items);
+  const itemsById = new Map(state.items.map((item) => [item.cutId, item]));
+  const token = ++state.thumbnailToken;
+  parsed.cuts.forEach((cut, index) => {
+    const row = document.createElement("div");
+    row.className = "template-line";
+    const match = photos.rows[index];
+    const label = cutPhotoAccessibility(records[index], match);
+    if (label) {
+      row.setAttribute("role", "img");
+      row.setAttribute("aria-label", label);
+    }
+    const slot = document.createElement("div");
+    slot.className = match.kind === "photo" ? "template-cut-photo" : "template-cut-photo template-cut-photo-none";
+    const values = document.createElement("div");
+    values.className = "template-cut-values";
+    if (label) {
+      slot.setAttribute("aria-hidden", "true");
+      values.setAttribute("aria-hidden", "true");
+    }
+    const text = document.createElement("span");
+    text.className = "template-line-text";
+    text.textContent = templateCutLine(cut, records[index].numberRaw);
+    values.append(text);
+    if (match.kind === "none") {
+      slot.textContent = TEMPLATE_CUT_PHOTO_COPY["TXT-UI-0449"].replaceAll(" ", "\n");
+      const warning = document.createElement("span");
+      warning.className = "template-cut-photo-warning";
+      warning.textContent = TEMPLATE_CUT_PHOTO_COPY["TXT-UI-0450"];
+      values.append(warning);
+    }
+    row.append(slot, values);
+    cutRoot.append(row);
+    if (match.kind === "photo") renderPhoto(slot, itemsById.get(match.cutId), 256, token, label);
+  });
+
+  const noticeRoot = byId("record-confirm-notices");
+  noticeRoot.replaceChildren();
+  const rejected = cutNameRejectionLines(parsed.cutNameRejections ?? []);
+  const missing = rollMissingNumberLine(parsed.cuts.map((cut) => cut.n).filter((number) => number != null), state.items.map((item) => item.frame));
+  const notices = [
+    ...rejected,
+    unknownColumnsLine(parsed.unknownColumns),
+    parsed.unread.length ? "읽지 못한 줄은 넣지 않았어요. 아래에서 원문을 볼 수 있어요." : null,
+    ...templateConfirmationNoticeLines(parsed.confirmations?.map((confirmation) => confirmation.kind)),
+    missing,
+    photos.hasUnmatched ? TEMPLATE_CUT_PHOTO_COPY["TXT-UI-0451"] : null,
+  ].filter(Boolean);
+  for (const text of notices) {
+    const line = document.createElement("p");
+    line.textContent = text;
+    if (text === TEMPLATE_CUT_PHOTO_COPY["TXT-UI-0451"]) line.className = "record-cut-photo-guide";
+    noticeRoot.append(line);
+  }
+
+  const unreadRoot = byId("record-unread-lines");
+  unreadRoot.replaceChildren();
+  for (const entry of unreadRaw) {
+    const line = document.createElement("div");
+    line.textContent = `${entry.line}: ${entry.text}`;
+    unreadRoot.append(line);
+  }
+  byId("record-confirm").disabled = Boolean(document.querySelector("#record-roll-values .error-text:not([hidden])"));
+}
+
+function confirmRecordImport() {
+  const pending = state.pendingRecord;
+  if (!pending) return;
+  const { parsed, fileName } = pending;
+  if (parsed.roll.name && checkRollName(parsed.roll.name).reason === "reserved") return;
+  const zeroAssessment = Array.isArray(parsed.cutNumberRaws)
+    ? assessZeroCut(zeroCutRecords(parsed.cuts, parsed.cutNumberRaws), state.photos.length) : null;
+  if (zeroAssessment?.ask && (recordZeroCutChoice?.pending !== pending || recordZeroCutChoice.selectedIndex === null)) return;
+  const importedRecords = zeroAssessment?.ask
+    ? applyZeroCut(parsed.cuts, parsed.cutNumberRaws, state.photos.length, recordZeroCutChoice.selectedIndex)
+    : parsed.cuts;
+  const importedRoll = { ...parsed.roll };
+  if (importedRoll.name) {
+    rollNameInput.value = importedRoll.name;
+    delete importedRoll.name;
+  }
+  state.roll = { ...state.roll, ...importedRoll };
+  state.importedRollKeys = new Set(Object.keys(importedRoll));
+  const previousRecords = recordsByNumber(state.records);
+  for (const item of state.items) cutMeta(item);
+  state.records = importedRecords;
+  state.recordFileName = fileName;
+  refreshItems();
+  for (const item of state.items) {
+    const meta = cutMeta(item);
+    Object.assign(meta, replaceRecordCutName(meta, previousRecords.get(item.frame)?.cutName, item.importedRecord?.cutName));
+    if (meta.dateProvenance === SHOOTING_DATE_PROVENANCE.none) meta.dateProvenance = SHOOTING_DATE_PROVENANCE.provider;
+  }
+  reprojectTemplateDates();
+  invalidateShareSession();
+  byId("record-name").textContent = parsed.cuts.some((cut) => cut.n != null)
+    ? `${fileName} · ${parsed.cuts.length}컷을 읽었어요.` : fileName;
+  byId("record-name").classList.remove("error-text");
+  state.pendingRecord = null;
+  recordZeroCutChoice = null;
+  renderRollInfo();
+  showScreen("roll-info");
+}
+
+async function receiveRecord(file) {
+  try {
+    const decoded = decodeTemplateBytes(await file.arrayBuffer());
+    if (decoded.state === "UNREADABLE") throw new Error("인코딩 문제로 내용을 읽지 못했어요.");
+    const text = decoded.text;
+    const parsed = file.name.toLowerCase().endsWith(".csv") ? parseCsvRecord(text) : parseMarkdownRecord(text);
+    state.pendingRecord = {
+      fileName: file.name,
+      parsed,
+      unreadRaw: recordUnreadEntries(parsed, text),
+    };
+    renderRecordConfirmation();
+    recordZeroCutChoice = null;
+    showScreen("record-confirm");
+  } catch (error) {
+    state.pendingRecord = null;
+    byId("record-name").textContent = error.message;
+    byId("record-name").classList.add("error-text");
+    showScreen("roll-info");
+  } finally {
+    recordInput.value = "";
+  }
+}
+
+async function buildOutput() {
+  const rollName = rollNameInput.value || defaultRollName();
+  const quality = { high: 0.85, balanced: 0.75, small: 0.65 }[state.exportQuality] ?? 0.85;
+  return exportConfiguredZip(currentExportItems(), {
+    rollName, mode: state.mode, format: state.exportFormat, quality, lossless: state.exportQuality === "lossless",
+    width: state.exportDigits, rollFrameLabel: state.rollFrameLabel,
+    rgbHistogram: state.mode === "off" ? false : state.rgbHistogram,
+    paddingRatio: state.mode === "off" ? "original" : state.paddingRatio,
+  });
+}
+
+function openAppPreview(kind) {
+  const preview = appPreviews[kind];
+  if (!preview || !state.appPreviewAvailable[kind]) return;
+  byId("app-preview-title").textContent = preview.title;
+  byId("app-preview-image").src = preview.image;
+  byId("app-preview-caption").textContent = preview.caption;
+  byId("app-preview-layer").hidden = false;
+  byId("app-preview-close").focus();
+}
+
+const RESULT_PREVIEW_EDGE = 112;
+
+/** Result rows show a small canvas drawn once per file (decoded at thumbnail size), not the full-size result. */
+function makeResultPreview(file) {
+  return (async () => {
+    const dimensions = await shownPhotoDimensions(file.blob, file.width, file.height, file.type === "image/jpeg" ? "jpeg" : "other");
+    const { bitmap } = await makeThumbnailBitmap(file.blob, { maxEdge: RESULT_PREVIEW_EDGE, dimensions });
+    try {
+      const scale = Math.min(RESULT_PREVIEW_EDGE / bitmap.width, RESULT_PREVIEW_EDGE / bitmap.height, 1);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return canvas;
+    } finally {
+      bitmap.close?.();
+    }
+  })();
+}
+
+function showResultPreview(file, slot) {
+  if (file.previewReleased) return;
+  file.preview ??= makeResultPreview(file);
+  file.preview.then((canvas) => {
+    if (file.previewReleased || !slot.isConnected) return;
+    slot.replaceChildren(canvas);
+  }, () => {});
+}
+
+/** Called when the result screen is left or replaced: previews and the result files are let go. */
+function releaseResult(result) {
+  for (const file of result?.files ?? []) {
+    file.previewReleased = true;
+    file.preview?.then((canvas) => { canvas.width = 0; canvas.height = 0; }, () => {});
+    file.preview = null;
+  }
+}
+
+function renderResult() {
+  const result = state.result;
+  byId("result-title").textContent = `사진 ${result.files.length}장을 내려받았어요.`;
+  // Measured time only for the user's own ZIP; a built-in example says nothing about their device.
+  byId("export-elapsed").hidden = state.exampleActive;
+  byId("export-elapsed").textContent = state.exampleActive ? "" : `롤 전체 내보내기 · ${(result.elapsedMs / 1000).toFixed(2)}초`;
+  const chosen = result.files.filter((file) => file.selected).length;
+  byId("result-files-title").textContent = `공유할 파일 · ${chosen}개 선택`;
+  byId("toggle-all-results").textContent = chosen === result.files.length ? "전체 해제" : "전체 선택";
+  const root = byId("result-file-list");
+  root.replaceChildren();
+  for (const file of result.files) {
+    const row = document.createElement("label");
+    row.className = "result-file-row";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = file.selected;
+    checkbox.addEventListener("change", () => { file.selected = checkbox.checked; renderResult(); });
+    const thumb = document.createElement("span");
+    thumb.className = "result-thumb";
+    showResultPreview(file, thumb);
+    const text = document.createElement("span");
+    text.className = "result-file-text";
+    const name = document.createElement("strong");
+    name.textContent = file.name;
+    const detail = document.createElement("small");
+    detail.textContent = `${file.type.replace("image/", "").toUpperCase()} · ${Math.max(1, Math.round(file.size / 1024))}KB`;
+    text.append(name, detail);
+    row.append(checkbox, thumb, text);
+    root.append(row);
+  }
+  shareProgress.hidden = true;
+  updateShareAvailability();
+}
+
+zipInput.addEventListener("change", async () => {
+  const file = zipInput.files[0] ?? null;
+  try {
+    if (file) await receiveZip(file);
+  } finally {
+    zipInput.value = "";
+  }
+});
+recordInput.addEventListener("change", () => recordInput.files[0] && receiveRecord(recordInput.files[0]));
+byId("shifted-demo").addEventListener("click", startHanriverExample);
+byId("record-import").addEventListener("click", () => recordInput.click());
+byId("example-record-import").addEventListener("click", () => {
+  if (state.exampleActive && state.exampleRecordBytes) {
+    receiveRecord(new File([state.exampleRecordBytes], "hanriver_shooting_record.csv", { type: "text/csv" }));
+  }
+});
+byId("record-examples").addEventListener("click", openExampleSheet);
+byId("record-guide-info").addEventListener("click", showTemplateGuide);
+byId("record-cancel").addEventListener("click", () => { state.pendingRecord = null; recordZeroCutChoice = null; renderRollInfo(); showScreen("roll-info"); });
+byId("record-confirm").addEventListener("click", requestRecordImport);
+byId("record-zero-cut-cancel").addEventListener("click", closeRecordZeroCut);
+byId("record-zero-cut-import").addEventListener("click", () => {
+  if (byId("record-zero-cut-import").disabled) return;
+  confirmRecordImport();
+  closeRecordZeroCut();
+});
+byId("record-zero-cut-layer").addEventListener("click", (event) => {
+  if (event.target === byId("record-zero-cut-layer")) closeRecordZeroCut();
+});
+byId("record-zero-cut-layer").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeRecordZeroCut();
+  } else if (event.key === "Tab") {
+    const buttons = [...byId("record-zero-cut-layer").querySelectorAll("button")]
+      .filter((button) => !button.disabled && button.getClientRects().length);
+    const first = buttons[0];
+    const last = buttons.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }
+});
+byId("example-sheet-close").addEventListener("click", closeExampleSheet);
+byId("example-sheet-layer").addEventListener("click", (event) => { if (event.target === byId("example-sheet-layer")) closeExampleSheet(); });
+byId("bulk-result").addEventListener("click", () => showBulkNotice(""));
+for (const eventName of ["dragenter", "dragover"]) {
+  dropZone.addEventListener(eventName, (event) => { event.preventDefault(); dropZone.classList.add("is-over"); });
+}
+for (const eventName of ["dragleave", "drop"]) {
+  dropZone.addEventListener(eventName, (event) => { event.preventDefault(); dropZone.classList.remove("is-over"); });
+}
+dropZone.addEventListener("drop", (event) => event.dataTransfer.files[0] && receiveZip(event.dataTransfer.files[0]));
+
+for (const button of document.querySelectorAll("[data-presentation]")) {
+  button.addEventListener("click", () => { state.presentation = button.dataset.presentation; renderRoll(); });
+}
+for (const button of document.querySelectorAll("[data-columns]")) {
+  button.addEventListener("click", () => { state.columns = Number(button.dataset.columns); renderRoll(); });
+}
+for (const button of document.querySelectorAll("[data-open-export]")) button.addEventListener("click", () => openExport());
+for (const button of document.querySelectorAll("[data-open-roll-info]")) button.addEventListener("click", () => openRollInfo("cut"));
+for (const button of document.querySelectorAll("[data-go-start]")) button.addEventListener("click", () => {
+  if (state.bulkEditing) finishBulkEdit();
+  else showScreen("start");
+});
+
+byId("roll-info-button").addEventListener("click", () => openRollInfo("roll"));
+byId("record-unmatched-fix").addEventListener("click", openBulkEdit);
+byId("roll-menu").addEventListener("click", () => showOptionDialog("롤 메뉴", [
+  {
+    label: "순서대로 번호 다시 매기기",
+    action: () => showDialog({
+      title: "지금 순서대로 1번부터 번호를 다시 매길까요?",
+      body: "",
+      cancel: "취소",
+      confirm: "확인",
+      onCancel: () => {},
+      onConfirm: () => {
+        applyBulkPositions(renumberByOrder(currentPositions()));
+        renderRoll();
+        showScreen("roll");
+      },
+    }),
+  },
+]));
+byId("open-bulk-edit").addEventListener("click", openBulkEdit);
+byId("open-contact-sheet").addEventListener("click", openContactSheet);
+byId("bulk-toggle-all").addEventListener("click", () => {
+  state.bulkSelection = state.bulkSelection.size === state.items.length ? new Set() : new Set(state.items.map((item) => item.cutId));
+  state.bulkAfterAction = false;
+  state.bulkMessage = "";
+  renderRoll();
+});
+function finishBulkEdit() {
+  state.bulkEditing = false;
+  state.bulkSelection = new Set();
+  state.bulkMessage = "";
+  renderRoll();
+}
+byId("bulk-finish").addEventListener("click", finishBulkEdit);
+byId("bulk-export").addEventListener("click", () => openExport(new Set(state.bulkSelection)));
+byId("bulk-shooting-info").addEventListener("click", () => {
+  state.bulkDraft = {};
+  renderBulkInfo();
+  showScreen("bulk-info");
+});
+byId("bulk-info-back").addEventListener("click", () => { state.bulkDraft = {}; renderRoll(); showScreen("roll"); });
+byId("bulk-info-done").addEventListener("click", requestBulkInfoSave);
+byId("bulk-number").addEventListener("click", openBulkNumberMenu);
+byId("bulk-number-menu").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeBulkNumberMenu(true);
+    return;
+  }
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const items = bulkNumberMenuItems();
+  if (!items.length) return;
+  const current = items.indexOf(document.activeElement);
+  let next = current;
+  if (event.key === "Home") next = 0;
+  if (event.key === "End") next = items.length - 1;
+  if (event.key === "ArrowDown") next = (current + 1 + items.length) % items.length;
+  if (event.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
+  items[next].focus();
+});
+document.addEventListener("click", (event) => {
+  const root = byId("bulk-number-menu");
+  if (root.hidden || root.contains(event.target) || event.target === byId("bulk-number")) return;
+  closeBulkNumberMenu(root.contains(document.activeElement));
+});
+for (const button of document.querySelectorAll("[data-bulk-orientation]")) {
+  button.addEventListener("click", () => rotateBulk(button.dataset.bulkOrientation));
+}
+byId("cut-back").addEventListener("click", () => { renderRoll(); showScreen("roll"); });
+byId("roll-info-back").addEventListener("click", () => showScreen(state.returnScreen));
+byId("roll-info-done").addEventListener("click", () => { renderRoll(); if (state.returnScreen === "cut") renderCut(); showScreen(state.returnScreen); });
+byId("export-back").addEventListener("click", () => showScreen(state.returnScreen));
+byId("contact-back").addEventListener("click", () => { renderRoll(); showScreen("roll"); });
+byId("field-back").addEventListener("click", () => { const screen = state.editing?.returnScreen ?? "roll"; state.editing = null; showScreen(screen); });
+byId("field-done").addEventListener("click", () => finishFieldEdit(false));
+byId("field-input").addEventListener("input", () => {
+  const editing = state.editing;
+  const input = byId("field-input");
+  const filtered = editing && ((editing.key === "ap" && ["cut", "bulk"].includes(editing.scope))
+    || (editing.key === "focal" && ["cut", "bulk", "roll"].includes(editing.scope)));
+  if (filtered && !acceptsDecimalFieldEdit(editing.acceptedInput, input.value)) input.value = editing.acceptedInput;
+  if (editing) editing.acceptedInput = input.value;
+  updateFieldMessage();
+});
+byId("field-revert").addEventListener("click", () => {
+  const editing = state.editing;
+  if (!editing || editing.scope !== "cut") return;
+  const item = state.items[state.currentCut];
+  delete ensureCutValues(item)[editing.key];
+  editing.draft = "";
+  editing.hasCutValue = false;
+  renderFieldEditor();
+  invalidateShareSession();
+});
+byId("previous-cut").addEventListener("click", () => { if (state.currentCut > 0) { state.currentCut -= 1; renderCut(); window.scrollTo(0, 0); } });
+byId("next-cut").addEventListener("click", () => { if (state.currentCut < state.items.length - 1) { state.currentCut += 1; renderCut(); window.scrollTo(0, 0); } });
+byId("replace-scan-button").addEventListener("click", () => {
+  showBulkNotice("");
+  showDialog({
+    title: "이 컷의 스캔을 교체할까요?",
+    body: "회전·반전은 새로 맞춰야 해요.\n이전에 내보낸 파일은 그대로예요.",
+    cancel: "취소",
+    confirm: "교체하기",
+    onCancel: () => {},
+    onConfirm: () => replaceScanInput.click(),
+  });
+});
+replaceScanInput.addEventListener("change", async () => {
+  const current = state.items[state.currentCut];
+  const file = replaceScanInput.files[0] ?? null;
+  try {
+    const staged = await stageScanReplacement(file);
+    const replacement = applyScanReplacement(current, staged);
+    if (!replacement.changed) return;
+    state.photos[current.originalIndex] = replacement.photo;
+    delete state.orientation[current.cutId];
+    thumbnailCache.clear();
+    invalidateShareSession();
+    renderCut();
+    showBulkNotice(replacement.message);
+  } catch {
+    renderCut();
+    showBulkNotice(SCAN_REPLACEMENT_READ_FAILURE);
+  } finally {
+    replaceScanInput.value = "";
+  }
+});
+for (const button of document.querySelectorAll("[data-orientation]")) {
+  button.addEventListener("click", () => {
+    const item = state.items[state.currentCut];
+    const correction = photoCorrection(item);
+    if (button.dataset.orientation === "left") state.orientation[item.cutId] = rotatePhotoCorrection(correction, -1);
+    if (button.dataset.orientation === "right") state.orientation[item.cutId] = rotatePhotoCorrection(correction, 1);
+    if (button.dataset.orientation === "flip") state.orientation[item.cutId] = flipPhotoCorrection(correction);
+    renderCut();
+  });
+}
+byId("dialog-cancel").addEventListener("click", () => closeDialog("cancel"));
+byId("dialog-confirm").addEventListener("click", () => closeDialog("confirm"));
+byId("dialog-layer").addEventListener("click", (event) => {
+  if (event.target === byId("dialog-layer") && state.dialog?.dismissOnOutside) closeDialog("dismiss");
+});
+
+for (const input of document.querySelectorAll('input[name="frame-mode"]')) {
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+    state.mode = input.value;
+    invalidateShareSession();
+    updateExportControls();
+    renderPreview();
+  });
+}
+
+for (const button of document.querySelectorAll("[data-format]")) {
+  button.addEventListener("click", () => {
+    if (button.dataset.format === "webp" && state.webpSupported === false) { openAppPreview("webp"); return; }
+    state.exportFormat = button.dataset.format;
+    if (state.exportFormat !== "webp" && state.exportQuality === "lossless") state.exportQuality = "high";
+    if (state.exportFormat === "png") state.exportQuality = "high";
+    updateExportControls();
+  });
+}
+for (const button of document.querySelectorAll("[data-contact-format]")) {
+  button.addEventListener("click", () => {
+    if (button.dataset.contactFormat === "webp" && state.webpSupported === false) { openAppPreview("webp"); return; }
+    state.contactFormat = button.dataset.contactFormat;
+    if (state.contactFormat !== "webp" && state.contactQuality === "lossless") state.contactQuality = "high";
+    state.contactFile = null;
+    updateContactControls();
+  });
+}
+for (const button of document.querySelectorAll("[data-contact-quality]")) {
+  button.addEventListener("click", () => { state.contactQuality = button.dataset.contactQuality; state.contactFile = null; updateContactControls(); });
+}
+byId("contact-header-enabled").addEventListener("change", async (event) => { state.contactHeader = event.target.checked; await renderContact(); });
+byId("contact-save").addEventListener("click", async () => {
+  try { await makeContactFile(true); } catch (error) { setContactResult(error.message); }
+});
+byId("contact-share").addEventListener("click", async () => {
+  try {
+    const result = state.contactFile ?? await makeContactFile(false);
+    const file = new File([result.blob], result.name, { type: result.blob.type });
+    if (!navigator.canShare?.({ files: [file] })) throw new Error("이 브라우저에서는 모아 보기 파일을 공유할 수 없어요. 이미지로 저장해 주세요.");
+    await navigator.share({ files: [file] });
+    setContactResult("");
+    showBulkNotice("사진 1장을 보냈어요.");
+  } catch (error) {
+    setContactResult(error.name === "AbortError" ? "공유를 취소했어요." : error.message);
+  }
+});
+for (const button of document.querySelectorAll("[data-quality]")) {
+  button.addEventListener("click", () => {
+    state.exportQuality = button.dataset.quality;
+    updateExportControls();
+  });
+}
+for (const button of document.querySelectorAll("[data-digits]")) {
+  button.addEventListener("click", () => { state.exportDigits = Number(button.dataset.digits); updateExportControls(); });
+}
+byId("roll-frame-label").addEventListener("change", (event) => {
+  state.rollFrameLabel = event.target.checked;
+  renderPreview();
+});
+byId("rgb-histogram").addEventListener("change", (event) => {
+  state.rgbHistogram = event.target.checked;
+  renderPreview();
+});
+for (const button of document.querySelectorAll("[data-ratio]")) {
+  button.addEventListener("click", () => { state.paddingRatio = button.dataset.ratio; updateExportControls(); renderPreview(); });
+}
+byId("toggle-all-cuts").addEventListener("click", () => {
+  state.exportSelection = state.exportSelection.size === state.items.length ? new Set() : new Set(state.items.map((item) => item.frame));
+  renderExportCuts();
+  renderPreview();
+});
+
+exportButton.addEventListener("click", async () => {
+  try {
+    exportButton.disabled = true;
+    setExportReasons();
+    const selected = currentExportItems();
+    reassessUndetermined(selected);
+    if (selected.some(completenessBlocksExport)) {
+      throw new Error("스캔 파일을 열 수 없어 내보내지 않았어요.");
+    }
+    setStatus("내보낼 사진을 만들고 있어요.", false, exportStatus);
+    const started = performance.now();
+    const rollName = rollNameInput.value || defaultRollName();
+    const output = await buildOutput();
+    const archiveName = makeExportArchiveFilename(rollName);
+    if (archiveName.result !== "name") throw new Error("내보낼 파일 이름을 만들지 못했어요.");
+    downloadBytes(output.zip, archiveName.name);
+    const elapsedMs = performance.now() - started;
+    setExportReasons(output.photoOnlyFrames);
+    releaseResult(state.result);
+    state.result = {
+      files: output.files.map((file) => ({ ...file, selected: true })),
+      elapsedMs, returnScreen: state.returnScreen, delivery: "download", shared: 0,
+    };
+    renderResult();
+    showScreen("result");
+  } catch (error) {
+    setStatus(error.message, true, exportStatus);
+  } finally {
+    updateExportControls();
+  }
+});
+
+shareButton.addEventListener("click", async () => {
+  try {
+    shareButton.disabled = true;
+    if (!state.shareSession) {
+      const files = makeShareFiles(state.result.files.filter((file) => file.selected));
+      const groups = groupShareFiles(files);
+      if (!groups) {
+        shareProgress.textContent = "이 브라우저에서는 사진 파일을 공유할 수 없어요. ZIP 내려받기를 이용해 주세요.";
+        shareProgress.hidden = false;
+        return;
+      }
+      state.shareSession = { groups, groupIndex: 0, shared: 0, total: files.length };
+    }
+    const session = state.shareSession;
+    const files = session.groups[session.groupIndex];
+    await navigator.share({ files });
+    session.groupIndex += 1;
+    session.shared += files.length;
+    state.result.delivery = "share";
+    state.result.shared = session.shared;
+    showBulkNotice(`사진 ${session.shared}장을 보냈어요.`);
+    const progress = `${session.total}장 중 ${session.shared}장을 넘겼어요.`;
+    shareProgress.textContent = progress;
+    shareProgress.hidden = false;
+    if (session.groupIndex < session.groups.length) shareButton.textContent = "다음 묶음 사진첩에 저장";
+    else {
+      state.shareSession = null;
+      shareButton.textContent = "사진첩에 다시 저장";
+    }
+  } catch (error) {
+    shareProgress.textContent = error.name === "AbortError" ? "공유를 취소했어요." : error.message;
+    shareProgress.hidden = false;
+  } finally {
+    updateShareAvailability();
+  }
+});
+
+byId("toggle-all-results").addEventListener("click", () => {
+  const select = !state.result.files.every((file) => file.selected);
+  for (const file of state.result.files) file.selected = select;
+  renderResult();
+});
+byId("result-done").addEventListener("click", () => {
+  const screen = state.result?.returnScreen ?? "roll";
+  releaseResult(state.result);
+  state.result = null;
+  invalidateShareSession();
+  if (screen === "roll") renderRoll(); else renderCut();
+  showScreen(screen);
+});
+for (const button of document.querySelectorAll("[data-app-preview]")) button.addEventListener("click", () => openAppPreview(button.dataset.appPreview));
+byId("app-preview-close").addEventListener("click", () => { byId("app-preview-layer").hidden = true; });
+window.addEventListener("pageshow", () => { if (state.screen === "result") updateShareAvailability(); });
+window.addEventListener("pagehide", () => thumbnailCache.clear());
+
+if (new URLSearchParams(location.search).get("demo") === "1") {
+  state.photos = ["scan_1.jpg", "scan_2.jpg", "scan_10.jpg"].map((name) => ({ name, bytes: new Uint8Array() }));
+  state.importFailures = [];
+  state.roll = { camera: "합성 카메라", lens: "50mm", film: "합성 필름", ei: "400" };
+  state.records = [
+    { n: 1, ap: "f/5.6", sh: "1/250", focal: "50", ev: "+0.0" },
+    { n: 2, ap: "f/2.8", sh: "1/60", focal: "50" },
+    { n: 3, ap: "f/8", sh: "1/500", focal: "50", ev: "-0.5" },
+  ];
+  state.cutValues = [{ cutId: "scan_1.jpg", n: 1, camera: "컷 전용 카메라" }];
+  renderRoll();
+  showScreen("roll");
+}

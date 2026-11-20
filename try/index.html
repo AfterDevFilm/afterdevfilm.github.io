@@ -254,7 +254,7 @@
       <div class="record-entry-row">
         <button id="record-import" class="record-button secondary" type="button">촬영 기록 불러오기</button>
         <button id="record-guide-info" class="record-guide-info" type="button" aria-label="촬영 기록 불러오기 안내">ⓘ</button>
-        
+        <!-- Built-in example record entry. -->
         <button id="example-record-import" class="record-button secondary" type="button" hidden>예시 촬영 기록 불러오기</button>
       </div>
       <p id="record-name" class="filename">촬영 기록 없이도 계속할 수 있어요.</p>
@@ -413,6 +413,16 @@
     <button id="bulk-result" class="bulk-result" type="button" role="status" aria-label="결과 알림 닫기" hidden></button>
   </main>
 
+  <div id="record-zero-cut-layer" class="dialog-layer" hidden>
+    <section class="dialog record-zero-cut-dialog" role="dialog" aria-modal="true" aria-labelledby="record-zero-cut-title">
+      <div id="record-zero-cut" class="record-zero-cut"></div>
+      <div class="dialog-actions">
+        <button id="record-zero-cut-cancel" class="dialog-safe" type="button"></button>
+        <button id="record-zero-cut-import" class="dialog-confirm" type="button" disabled></button>
+      </div>
+    </section>
+  </div>
+
   <div id="dialog-layer" class="dialog-layer" hidden>
     <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
       <h2 id="dialog-title"></h2>
@@ -456,7 +466,7 @@
     </section>
   </div>
 
-  
+  <!-- Page-bottom notice. -->
   <p class="site-copyright">© 2026 AfterDev. All rights reserved.</p>
 
   <script src="./src/vendor/fflate-0.8.3.js"></script>

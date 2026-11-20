@@ -1,1 +1,327 @@
-import{correctedPhotoCanvas as t,correctedPhotoDimensions as o,releaseCanvas as e}from"./photo-correction.js";const n=1080;const r=18;const i=.615;const a=20;const s=17;const l=16;const c=20;const m="이 사진은 액자를 넣기엔 커요. 사진만 저장은 돼요.";const h=" · ";const u="rgb(30,30,30)";const f="rgb(55,55,55)";const p=140;const d=22;const g=1.4;const x=16;const w=4;const F=16;const b={"iphone-safari":{id:"iphone-safari",photoPixels:14e6,canvasPixels:16777216,maxDimension:4096},firefox:{id:"firefox",photoPixels:5e7,canvasPixels:625e5,maxDimension:32767},chromium:{id:"chromium",photoPixels:64e6,canvasPixels:8e7,maxDimension:32767},"desktop-safari":{id:"desktop-safari",photoPixels:32e6,canvasPixels:4e7,maxDimension:16384},other:{id:"other",photoPixels:24e6,canvasPixels:3e7,maxDimension:1e4}};function P(t,o){return Math.round(t*o)}function v(t,o,e,n=0,r=1){return Math.round(Math.max(n,t*o)*r*e)}function y(t,o,e,m,h=false){const u=m/n;const f=t=>P(t,u);const b=f(r);const y=m-2*b;const I=Math.round(y*o/t);const S=Math.min(1,I/y);const C=Math.max(12,a*S);const R=Math.max(6,Math.round(13*S));const M=Math.max(14,Math.round(22*S));const T=Math.max(16,Math.round(25*S));const $=Math.round(C*g*u);const L=f(x);const W=f(w);const B=f(R);const E=f(F);const N=v(s,S,u,12,g);const H=v(s,S,u,12);const X=v(l,S,u,12,g);const G=v(c,S,u,1,g);const Y=G;const D=f(M);const K=f(T);const k=Math.max(1,f(1));const A=b+f(2);const j=b+f(1);const q=Math.round(m*i);const O=h?f(p):null;const U=h?f(d):null;const V=Math.max(e?X:0,U??0);const z=e?L+V:null;const J=L+(V>0?V+W:0);const Q=N+Y;const Z=J+I+B;const _=Z+Q+E;return{canvasWidth:m,canvasHeight:_,sideMargin:b,photoWidth:y,photoHeight:I,photoX:b,photoY:J,topLabelX:A,leftRuleX:j,centerRuleX:q,ruleWidth:k,leftTextInset:D,rightTextInset:K,leftColumnWidth:q-(j+D),rightColumnWidth:m-b-(q+K),rollFrameLabelBaselineY:z,histogramX:O==null?null:m-b-O,histogramY:U==null?null:L+V-U,histogramWidth:O,histogramHeight:U,captionTopY:Z,captionBlockHeight:Q,ruleEndY:Z+Q-k,topOuterMargin:L,topLabelPhotoGap:W,bottomPhotoCaptionGap:B,bottomOuterMargin:E,fontPx:$,rowGap:Y,orientationScale:S,widthScale:u,captionFontPx:N,minimumCaptionFontPx:H,rollFrameFontPx:X,typographyRowGap:G}}export function computeInformationFrameGeometry(t,o,e=true,n=false,r=null){if(!Number.isInteger(t)||!Number.isInteger(o)||t<=0||o<=0){throw new Error("사진 크기는 양의 정수여야 해요.")}if(r!==null&&(!Number.isInteger(r)||r<=0)){throw new Error("출력 너비는 양의 정수여야 해요.")}let i=r??t;if(r===null){while(y(t,o,e,i,n).photoWidth!==t)i+=1}const a=y(t,o,e,i,n);if(r===null&&a.photoHeight!==o)throw new Error("사진 크기를 그대로 둘 수 없어요.");return a}export function showsRGBHistogramControl(t){return t==="simple"||t==="detail"}export function histogramSampleDimensions(t,o){if(!Number.isInteger(t)||!Number.isInteger(o)||t<=0||o<=0)throw new Error("사진 크기는 양의 정수여야 해요.");const e=Math.max(t,o);if(e<=512)return{width:t,height:o};const n=512/e;return{width:Math.max(1,Math.round(t*n)),height:Math.max(1,Math.round(o*n))}}export function computeRGBHistogramFromSRGBPixels(t){const o=[new Array(256).fill(0),new Array(256).fill(0),new Array(256).fill(0)];for(const e of t)for(let t=0;t<3;t+=1)o[t][e[t]]+=1;const e=Math.max(...o.flat().map(t=>Math.sqrt(t)));const n=t=>o[t].map(t=>e===0?0:Math.sqrt(t)/e);return{red:n(0),green:n(1),blue:n(2)}}function I(t){const o=histogramSampleDimensions(t.width,t.height);const e=document.createElement("canvas");e.width=o.width;e.height=o.height;const n=e.getContext("2d",{alpha:false,colorSpace:"srgb"});n.drawImage(t,0,0,o.width,o.height);const r=n.getImageData(0,0,o.width,o.height,{colorSpace:"srgb"}).data;const i=[];for(let t=0;t<r.length;t+=4)i.push([r[t],r[t+1],r[t+2]]);return computeRGBHistogramFromSRGBPixels(i)}function S(t,o,e){const{histogramX:n,histogramY:r,histogramWidth:i,histogramHeight:a}=o;if(n==null||r==null||i==null||a==null)return;const s=r+a;const l=(o,e)=>{t.beginPath();t.moveTo(n,s);o.forEach((o,e)=>t.lineTo(n+e*(i-1)/255,s-o*a));t.lineTo(n+i,s);t.closePath();t.fillStyle=e;t.fill()};l(e.red,"rgba(255,0,0,0.55)");l(e.green,"rgba(0,255,0,0.55)");l(e.blue,"rgba(0,0,255,0.55)")}export function browserCanvasCapability(t=navigator.userAgent){const o=String(t);const e=/iPhone|iPad|iPod/i.test(o)||/Macintosh/i.test(o)&&navigator.maxTouchPoints>1;if(e)return{...b["iphone-safari"]};if(/Firefox\//i.test(o))return{...b.firefox};if(/Chrome\//i.test(o)||/Chromium\//i.test(o)||/Edg\//i.test(o))return{...b.chromium};if(/Safari\//i.test(o))return{...b["desktop-safari"]};return{...b.other}}export function evaluateInformationFrameLimit(t,o,e=browserCanvasCapability(),n=false,r=true){const i=computeInformationFrameGeometry(t,o,r,n);const a=t*o;const s=i.canvasWidth*i.canvasHeight;const l=a<=e.photoPixels&&s<=e.canvasPixels&&i.canvasWidth<=e.maxDimension&&i.canvasHeight<=e.maxDimension;return{allowed:l,message:l?"":m,sourcePixels:a,canvasPixels:s,geometry:i,capability:e}}export function evaluateInformationFramePhotoLimit(t,e=browserCanvasCapability(),n=false,r=true){const i=o(t.width,t.height,t.correction);return evaluateInformationFrameLimit(i.width,i.height,e,n,r)}export function formatFrameAperture(t){const o=String(t??"");return/^\d+(?:\.\d+)?$/.test(o)?`f/${o}`:o}export function formatFrameFocalLength(t){const o=String(t??"");const e=o.trim();if(!e)return"";const n=e.match(/^(\d+(?:\.\d+)?)\s*(?:mm)?$/i);if(!n)return o;const[r,i=""]=n[1].split(".");const a=r.replace(/^0+(?=\d)/,"");const s=i.replace(/0+$/,"");return`${a}${s?`.${s}`:""}mm`}export function formatRollFrameLabel(t,o){const e=String(t??"").trim();const n=String(o??"").trim();const r=[e?`R${e}`:"",n?`F${n}`:""].filter(Boolean);return r.length?r.join("  "):null}export function formatInformationFrameLine(t){return t.map(t=>t.text).join(h)}function C(t,o=false){const e=String(t??"").trim();return e?{text:e,bold:o}:null}function R(t){const o=String(t??"").trim();if(!/^[+-]?\d+(?:\.\d+)?$/.test(o))return null;const e=Number(o);const n=o.replace(/^[+-]/,"");return`${e>0?"+":e<0?"-":""}${n} EV`}export function buildInformationFrameCaption(t,o){const e=o==="detail";const n=[C(t.camera,true),e?C(t.lens):null].filter(Boolean);const r=[C(formatFrameFocalLength(t.focal)),C(formatFrameAperture(t.ap)),C(t.sh)];if(e)r.push(C(R(t.ev)));const i=[C(t.film,true),C(t.ei?`EI ${t.ei}`:"")].filter(Boolean);const a=e?[C(t.process),C(t.lab)].filter(Boolean):[];return{left:[n,r.filter(Boolean)],right:[i,a]}}function M(t,o,e){if(t.measureText(o).width<=e)return o;let n="";for(const r of o){if(t.measureText(`${n}${r}…`).width>e)break;n+=r}return n?`${n}…`:""}export function drawInformationFrameLine(t,o,e,n,r,i,a=i){if(!o.length||r<=0)return;const s=formatInformationFrameLine(o);const l=e=>o.reduce((n,r,i)=>{t.font=`${r.bold?700:400} ${e}px "Noto Sans KR Frame"`;const a=t.measureText(r.text).width;if(i===o.length-1)return n+a;t.font=`400 ${e}px "Noto Sans KR Frame"`;return n+a+t.measureText(h).width},0);let c=null;for(let t=i;t>=a;t-=1){if(l(t)<=r){c=t;break}}if(c===null){t.font=`400 ${a}px "Noto Sans KR Frame"`;t.fillStyle=f;t.fillText(M(t,s,r),e,n);return}let m=e;o.forEach((e,r)=>{t.font=`${e.bold?700:400} ${c}px "Noto Sans KR Frame"`;t.fillStyle=e.bold?u:f;t.fillText(e.text,m,n);m+=t.measureText(e.text).width;if(r<o.length-1){t.font=`400 ${c}px "Noto Sans KR Frame"`;t.fillStyle=f;t.fillText(h,m,n);m+=t.measureText(h).width}})}function T(t,o){return new Promise((e,n)=>t.toBlob(async t=>{if(!t){n(new Error("액자 사진을 만들지 못했어요."));return}e(new Uint8Array(await t.arrayBuffer()))},"image/jpeg",o))}export async function renderInformationFrame(o,n,r,i,a=.85,s=true,l=false){const c=s?formatRollFrameLabel(n.rollNumber,i):null;const m=c!==null;const h=evaluateInformationFramePhotoLimit(o,browserCanvasCapability(),l,m);if(!h.allowed)throw new Error(h.message);await Promise.all([document.fonts.load("400 16px \"Noto Sans KR Frame\""),document.fonts.load("700 16px \"Noto Sans KR Frame\"")]);const u=await t(o);let f=null;try{const t=evaluateInformationFrameLimit(u.width,u.height,browserCanvasCapability(),l,m);if(!t.allowed)throw new Error(t.message);const o=t.geometry;f=document.createElement("canvas");f.width=o.canvasWidth;f.height=o.canvasHeight;const e=f.getContext("2d",{alpha:false});e.fillStyle="white";e.fillRect(0,0,f.width,f.height);e.drawImage(u,o.photoX,o.photoY,o.photoWidth,o.photoHeight);if(l)S(e,o,I(u));e.textBaseline="alphabetic";e.font=`400 ${o.rollFrameFontPx}px "Noto Sans KR Frame"`;e.fillStyle="rgb(70,70,70)";if(c)e.fillText(c,o.topLabelX,o.rollFrameLabelBaselineY);e.fillStyle="rgb(115,115,115)";const i=o.captionBlockHeight-o.ruleWidth+1;e.fillRect(o.leftRuleX,o.captionTopY,o.ruleWidth,i);e.fillRect(o.centerRuleX,o.captionTopY,o.ruleWidth,i);const s=buildInformationFrameCaption(n,r);const h=o.captionTopY+o.captionFontPx;const p=h+o.typographyRowGap;drawInformationFrameLine(e,s.left[0],o.leftRuleX+o.leftTextInset,h,o.leftColumnWidth,o.captionFontPx,o.minimumCaptionFontPx);drawInformationFrameLine(e,s.left[1],o.leftRuleX+o.leftTextInset,p,o.leftColumnWidth,o.captionFontPx,o.minimumCaptionFontPx);drawInformationFrameLine(e,s.right[0],o.centerRuleX+o.rightTextInset,h,o.rightColumnWidth,o.captionFontPx,o.minimumCaptionFontPx);drawInformationFrameLine(e,s.right[1],o.centerRuleX+o.rightTextInset,p,o.rightColumnWidth,o.captionFontPx,o.minimumCaptionFontPx);return{bytes:await T(f,a),canvas:f,geometry:o}}catch(t){if(f)e(f);throw t}finally{e(u)}}
+import { correctedPhotoCanvas, correctedPhotoDimensions, releaseCanvas } from "./photo-correction.js";
+
+const REFERENCE_WIDTH = 1080;
+const SIDE_MARGIN_REF = 18;
+const CENTER_RULE_FRACTION = 0.615;
+const FONT_SIZE_REF = 20;
+const CAPTION_FONT_SIZE_REF = 17;
+const ROLL_FRAME_FONT_SIZE_REF = 16;
+const CAPTION_ROW_GAP_REF = 20;
+const FRAME_TOO_LARGE = "이 사진은 액자를 넣기엔 커요. 사진만 저장은 돼요.";
+const CAPTION_SEPARATOR = " · ";
+const CAPTION_PRIMARY_COLOR = "rgb(30,30,30)";
+const CAPTION_SECONDARY_COLOR = "rgb(55,55,55)";
+const HISTOGRAM_WIDTH_REF = 140;
+const HISTOGRAM_HEIGHT_REF = 22;
+const CONTENT_SCALE = 1.4;
+const TOP_OUTER_MARGIN_REF = 16;
+const TOP_ROW_PHOTO_GAP_REF = 4;
+const BOTTOM_OUTER_MARGIN_REF = 16;
+
+const CAPABILITIES = {
+  "iphone-safari": { id: "iphone-safari", photoPixels: 14_000_000, canvasPixels: 16_777_216, maxDimension: 4096 },
+  firefox: { id: "firefox", photoPixels: 50_000_000, canvasPixels: 62_500_000, maxDimension: 32767 },
+  chromium: { id: "chromium", photoPixels: 64_000_000, canvasPixels: 80_000_000, maxDimension: 32767 },
+  "desktop-safari": { id: "desktop-safari", photoPixels: 32_000_000, canvasPixels: 40_000_000, maxDimension: 16384 },
+  other: { id: "other", photoPixels: 24_000_000, canvasPixels: 30_000_000, maxDimension: 10000 },
+};
+
+function scaleValue(value, widthScale) {
+  return Math.round(value * widthScale);
+}
+
+function scaledReference(baseReference, orientationScale, widthScale, minimumReference = 0, contentScale = 1) {
+  return Math.round(Math.max(minimumReference, baseReference * orientationScale) * contentScale * widthScale);
+}
+
+function geometryAtWidth(photoWidthPx, photoHeightPx, rollFrameOn, outputWidth, rgbHistogramOn = false) {
+  const widthScale = outputWidth / REFERENCE_WIDTH;
+  const scale = (value) => scaleValue(value, widthScale);
+  const sideMargin = scale(SIDE_MARGIN_REF);
+  const photoWidth = outputWidth - 2 * sideMargin;
+  const photoHeight = Math.round(photoWidth * photoHeightPx / photoWidthPx);
+  const orientationScale = Math.min(1, photoHeight / photoWidth);
+  const fontPxRef = Math.max(12, FONT_SIZE_REF * orientationScale);
+  const bottomCaptionGapRef = Math.max(6, Math.round(13 * orientationScale));
+  const leftInsetRef = Math.max(14, Math.round(22 * orientationScale));
+  const rightInsetRef = Math.max(16, Math.round(25 * orientationScale));
+  const fontPx = Math.round(fontPxRef * CONTENT_SCALE * widthScale);
+  const topOuterMargin = scale(TOP_OUTER_MARGIN_REF);
+  const topLabelPhotoGap = scale(TOP_ROW_PHOTO_GAP_REF);
+  const bottomPhotoCaptionGap = scale(bottomCaptionGapRef);
+  const bottomOuterMargin = scale(BOTTOM_OUTER_MARGIN_REF);
+  const captionFontPx = scaledReference(CAPTION_FONT_SIZE_REF, orientationScale, widthScale, 12, CONTENT_SCALE);
+  const minimumCaptionFontPx = scaledReference(CAPTION_FONT_SIZE_REF, orientationScale, widthScale, 12);
+  const rollFrameFontPx = scaledReference(ROLL_FRAME_FONT_SIZE_REF, orientationScale, widthScale, 12, CONTENT_SCALE);
+  const typographyRowGap = scaledReference(CAPTION_ROW_GAP_REF, orientationScale, widthScale, 1, CONTENT_SCALE);
+  const rowGap = typographyRowGap;
+  const leftTextInset = scale(leftInsetRef);
+  const rightTextInset = scale(rightInsetRef);
+  const ruleWidth = Math.max(1, scale(1));
+  const topLabelX = sideMargin + scale(2);
+  const leftRuleX = sideMargin + scale(1);
+  const centerRuleX = Math.round(outputWidth * CENTER_RULE_FRACTION);
+  const histogramWidth = rgbHistogramOn ? scale(HISTOGRAM_WIDTH_REF) : null;
+  const histogramHeight = rgbHistogramOn ? scale(HISTOGRAM_HEIGHT_REF) : null;
+  const topRowHeight = Math.max(rollFrameOn ? rollFrameFontPx : 0, histogramHeight ?? 0);
+  const rollFrameLabelBaselineY = rollFrameOn ? topOuterMargin + topRowHeight : null;
+  const photoY = topOuterMargin + (topRowHeight > 0 ? topRowHeight + topLabelPhotoGap : 0);
+  const captionBlockHeight = captionFontPx + rowGap;
+  const captionTopY = photoY + photoHeight + bottomPhotoCaptionGap;
+  const canvasHeight = captionTopY + captionBlockHeight + bottomOuterMargin;
+  return {
+    canvasWidth: outputWidth, canvasHeight,
+    sideMargin, photoWidth, photoHeight, photoX: sideMargin, photoY, topLabelX, leftRuleX, centerRuleX,
+    ruleWidth, leftTextInset, rightTextInset, leftColumnWidth: centerRuleX - (leftRuleX + leftTextInset),
+    rightColumnWidth: (outputWidth - sideMargin) - (centerRuleX + rightTextInset),
+    rollFrameLabelBaselineY,
+    histogramX: histogramWidth == null ? null : outputWidth - sideMargin - histogramWidth,
+    histogramY: histogramHeight == null ? null : topOuterMargin + topRowHeight - histogramHeight,
+    histogramWidth, histogramHeight, captionTopY, captionBlockHeight,
+    ruleEndY: captionTopY + captionBlockHeight - ruleWidth,
+    topOuterMargin, topLabelPhotoGap, bottomPhotoCaptionGap, bottomOuterMargin,
+    fontPx, rowGap, orientationScale, widthScale,
+    captionFontPx, minimumCaptionFontPx, rollFrameFontPx, typographyRowGap,
+  };
+}
+
+export function computeInformationFrameGeometry(photoWidth, photoHeight, rollFrameOn = true, rgbHistogramOn = false, requestedOutputWidth = null) {
+  if (!Number.isInteger(photoWidth) || !Number.isInteger(photoHeight) || photoWidth <= 0 || photoHeight <= 0) {
+    throw new Error("사진 크기는 양의 정수여야 해요.");
+  }
+  if (requestedOutputWidth !== null && (!Number.isInteger(requestedOutputWidth) || requestedOutputWidth <= 0)) {
+    throw new Error("출력 너비는 양의 정수여야 해요.");
+  }
+  let outputWidth = requestedOutputWidth ?? photoWidth;
+  if (requestedOutputWidth === null) {
+    while (geometryAtWidth(photoWidth, photoHeight, rollFrameOn, outputWidth, rgbHistogramOn).photoWidth !== photoWidth) outputWidth += 1;
+  }
+  const geometry = geometryAtWidth(photoWidth, photoHeight, rollFrameOn, outputWidth, rgbHistogramOn);
+  if (requestedOutputWidth === null && geometry.photoHeight !== photoHeight) throw new Error("사진 크기를 그대로 둘 수 없어요.");
+  return geometry;
+}
+
+export function showsRGBHistogramControl(mode) {
+  return mode === "simple" || mode === "detail";
+}
+
+export function histogramSampleDimensions(width, height) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) throw new Error("사진 크기는 양의 정수여야 해요.");
+  const longest = Math.max(width, height);
+  if (longest <= 512) return { width, height };
+  const scale = 512 / longest;
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
+export function computeRGBHistogramFromSRGBPixels(pixels) {
+  const counts = [new Array(256).fill(0), new Array(256).fill(0), new Array(256).fill(0)];
+  for (const pixel of pixels) for (let channel = 0; channel < 3; channel += 1) counts[channel][pixel[channel]] += 1;
+  const commonMaximum = Math.max(...counts.flat().map((count) => Math.sqrt(count)));
+  const normalized = (channel) => counts[channel].map((count) => commonMaximum === 0 ? 0 : Math.sqrt(count) / commonMaximum);
+  return { red: normalized(0), green: normalized(1), blue: normalized(2) };
+}
+
+function histogramFromDecodedImage(image) {
+  const size = histogramSampleDimensions(image.width, image.height);
+  const sample = document.createElement("canvas");
+  sample.width = size.width;
+  sample.height = size.height;
+  const context = sample.getContext("2d", { alpha: false, colorSpace: "srgb" });
+  context.drawImage(image, 0, 0, size.width, size.height);
+  const bytes = context.getImageData(0, 0, size.width, size.height, { colorSpace: "srgb" }).data;
+  const pixels = [];
+  for (let offset = 0; offset < bytes.length; offset += 4) pixels.push([bytes[offset], bytes[offset + 1], bytes[offset + 2]]);
+  return computeRGBHistogramFromSRGBPixels(pixels);
+}
+
+function drawHistogram(context, geometry, histogram) {
+  const { histogramX: left, histogramY: top, histogramWidth: width, histogramHeight: height } = geometry;
+  if (left == null || top == null || width == null || height == null) return;
+  const bottom = top + height;
+  const draw = (values, color) => {
+    context.beginPath();
+    context.moveTo(left, bottom);
+    values.forEach((value, index) => context.lineTo(left + index * (width - 1) / 255, bottom - value * height));
+    context.lineTo(left + width, bottom);
+    context.closePath();
+    context.fillStyle = color;
+    context.fill();
+  };
+  draw(histogram.red, "rgba(255,0,0,0.55)");
+  draw(histogram.green, "rgba(0,255,0,0.55)");
+  draw(histogram.blue, "rgba(0,0,255,0.55)");
+}
+
+export function browserCanvasCapability(userAgent = navigator.userAgent) {
+  const ua = String(userAgent);
+  const appleTouch = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  if (appleTouch) return { ...CAPABILITIES["iphone-safari"] };
+  if (/Firefox\//i.test(ua)) return { ...CAPABILITIES.firefox };
+  if (/Chrome\//i.test(ua) || /Chromium\//i.test(ua) || /Edg\//i.test(ua)) return { ...CAPABILITIES.chromium };
+  if (/Safari\//i.test(ua)) return { ...CAPABILITIES["desktop-safari"] };
+  return { ...CAPABILITIES.other };
+}
+
+export function evaluateInformationFrameLimit(width, height, capability = browserCanvasCapability(), rgbHistogramOn = false, rollFrameOn = true) {
+  const geometry = computeInformationFrameGeometry(width, height, rollFrameOn, rgbHistogramOn);
+  const sourcePixels = width * height;
+  const canvasPixels = geometry.canvasWidth * geometry.canvasHeight;
+  const allowed = sourcePixels <= capability.photoPixels && canvasPixels <= capability.canvasPixels
+    && geometry.canvasWidth <= capability.maxDimension && geometry.canvasHeight <= capability.maxDimension;
+  return { allowed, message: allowed ? "" : FRAME_TOO_LARGE, sourcePixels, canvasPixels, geometry, capability };
+}
+
+export function evaluateInformationFramePhotoLimit(photo, capability = browserCanvasCapability(), rgbHistogramOn = false, rollFrameOn = true) {
+  const dimensions = correctedPhotoDimensions(photo.width, photo.height, photo.correction);
+  return evaluateInformationFrameLimit(dimensions.width, dimensions.height, capability, rgbHistogramOn, rollFrameOn);
+}
+
+export function formatFrameAperture(value) {
+  const text = String(value ?? "");
+  return /^\d+(?:\.\d+)?$/.test(text) ? `f/${text}` : text;
+}
+
+export function formatFrameFocalLength(value) {
+  const stored = String(value ?? "");
+  const text = stored.trim();
+  if (!text) return "";
+  const match = text.match(/^(\d+(?:\.\d+)?)\s*(?:mm)?$/i);
+  if (!match) return stored;
+  const [whole, fraction = ""] = match[1].split(".");
+  const canonicalWhole = whole.replace(/^0+(?=\d)/, "");
+  const canonicalFraction = fraction.replace(/0+$/, "");
+  return `${canonicalWhole}${canonicalFraction ? `.${canonicalFraction}` : ""}mm`;
+}
+
+export function formatRollFrameLabel(rollNumber, frame) {
+  const rollText = String(rollNumber ?? "").trim();
+  const frameText = String(frame ?? "").trim();
+  const parts = [rollText ? `R${rollText}` : "", frameText ? `F${frameText}` : ""].filter(Boolean);
+  return parts.length ? parts.join("  ") : null;
+}
+
+export function formatInformationFrameLine(segments) {
+  return segments.map((part) => part.text).join(CAPTION_SEPARATOR);
+}
+
+function segment(value, bold = false) {
+  const text = String(value ?? "").trim();
+  return text ? { text, bold } : null;
+}
+
+function exposureCompensation(value) {
+  const text = String(value ?? "").trim();
+  if (!/^[+-]?\d+(?:\.\d+)?$/.test(text)) return null;
+  const number = Number(text);
+  const magnitude = text.replace(/^[+-]/, "");
+  return `${number > 0 ? "+" : number < 0 ? "-" : ""}${magnitude} EV`;
+}
+
+export function buildInformationFrameCaption(record, mode) {
+  const detail = mode === "detail";
+  const leftLine1 = [segment(record.camera, true), detail ? segment(record.lens) : null].filter(Boolean);
+  const leftLine2 = [segment(formatFrameFocalLength(record.focal)), segment(formatFrameAperture(record.ap)), segment(record.sh)];
+  if (detail) leftLine2.push(segment(exposureCompensation(record.ev)));
+  const rightLine1 = [segment(record.film, true), segment(record.ei ? `EI ${record.ei}` : "")].filter(Boolean);
+  const rightLine2 = detail ? [segment(record.process), segment(record.lab)].filter(Boolean) : [];
+  return { left: [leftLine1, leftLine2.filter(Boolean)], right: [rightLine1, rightLine2] };
+}
+
+function fitText(context, text, maxWidth) {
+  if (context.measureText(text).width <= maxWidth) return text;
+  let result = "";
+  for (const character of text) {
+    if (context.measureText(`${result}${character}…`).width > maxWidth) break;
+    result += character;
+  }
+  return result ? `${result}…` : "";
+}
+
+export function drawInformationFrameLine(context, segments, x, baselineY, maxWidth, fontPx, minimumFontPx = fontPx) {
+  if (!segments.length || maxWidth <= 0) return;
+  const joined = formatInformationFrameLine(segments);
+  const measuredWidth = (size) => segments.reduce((width, part, index) => {
+    context.font = `${part.bold ? 700 : 400} ${size}px "Noto Sans KR Frame"`;
+    const partWidth = context.measureText(part.text).width;
+    if (index === segments.length - 1) return width + partWidth;
+    context.font = `400 ${size}px "Noto Sans KR Frame"`;
+    return width + partWidth + context.measureText(CAPTION_SEPARATOR).width;
+  }, 0);
+  let fittedFontPx = null;
+  for (let size = fontPx; size >= minimumFontPx; size -= 1) {
+    if (measuredWidth(size) <= maxWidth) {
+      fittedFontPx = size;
+      break;
+    }
+  }
+  if (fittedFontPx === null) {
+    context.font = `400 ${minimumFontPx}px "Noto Sans KR Frame"`;
+    context.fillStyle = CAPTION_SECONDARY_COLOR;
+    context.fillText(fitText(context, joined, maxWidth), x, baselineY);
+    return;
+  }
+  let cursor = x;
+  segments.forEach((part, index) => {
+    context.font = `${part.bold ? 700 : 400} ${fittedFontPx}px "Noto Sans KR Frame"`;
+    context.fillStyle = part.bold ? CAPTION_PRIMARY_COLOR : CAPTION_SECONDARY_COLOR;
+    context.fillText(part.text, cursor, baselineY);
+    cursor += context.measureText(part.text).width;
+    if (index < segments.length - 1) {
+      context.font = `400 ${fittedFontPx}px "Noto Sans KR Frame"`;
+      context.fillStyle = CAPTION_SECONDARY_COLOR;
+      context.fillText(CAPTION_SEPARATOR, cursor, baselineY);
+      cursor += context.measureText(CAPTION_SEPARATOR).width;
+    }
+  });
+}
+
+function canvasJpegBytes(canvas, quality) {
+  return new Promise((resolve, reject) => canvas.toBlob(async (blob) => {
+    if (!blob) { reject(new Error("액자 사진을 만들지 못했어요.")); return; }
+    resolve(new Uint8Array(await blob.arrayBuffer()));
+  }, "image/jpeg", quality));
+}
+
+export async function renderInformationFrame(photo, record, mode, frame, quality = 0.85, rollFrameOn = true, rgbHistogramOn = false) {
+  const rollFrameLabel = rollFrameOn ? formatRollFrameLabel(record.rollNumber, frame) : null;
+  const effectiveRollFrameOn = rollFrameLabel !== null;
+  const preflight = evaluateInformationFramePhotoLimit(photo, browserCanvasCapability(), rgbHistogramOn, effectiveRollFrameOn);
+  if (!preflight.allowed) throw new Error(preflight.message);
+  await Promise.all([document.fonts.load('400 16px "Noto Sans KR Frame"'), document.fonts.load('700 16px "Noto Sans KR Frame"')]);
+  const corrected = await correctedPhotoCanvas(photo);
+  let canvas = null;
+  try {
+    const limit = evaluateInformationFrameLimit(corrected.width, corrected.height, browserCanvasCapability(), rgbHistogramOn, effectiveRollFrameOn);
+    if (!limit.allowed) throw new Error(limit.message);
+    const geometry = limit.geometry;
+    canvas = document.createElement("canvas");
+    canvas.width = geometry.canvasWidth;
+    canvas.height = geometry.canvasHeight;
+    const context = canvas.getContext("2d", { alpha: false });
+    context.fillStyle = "white";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(corrected, geometry.photoX, geometry.photoY, geometry.photoWidth, geometry.photoHeight);
+    if (rgbHistogramOn) drawHistogram(context, geometry, histogramFromDecodedImage(corrected));
+    context.textBaseline = "alphabetic";
+    context.font = `400 ${geometry.rollFrameFontPx}px "Noto Sans KR Frame"`;
+    context.fillStyle = "rgb(70,70,70)";
+    if (rollFrameLabel) context.fillText(rollFrameLabel, geometry.topLabelX, geometry.rollFrameLabelBaselineY);
+    context.fillStyle = "rgb(115,115,115)";
+    const ruleHeight = geometry.captionBlockHeight - geometry.ruleWidth + 1;
+    context.fillRect(geometry.leftRuleX, geometry.captionTopY, geometry.ruleWidth, ruleHeight);
+    context.fillRect(geometry.centerRuleX, geometry.captionTopY, geometry.ruleWidth, ruleHeight);
+    const caption = buildInformationFrameCaption(record, mode);
+    const line1Y = geometry.captionTopY + geometry.captionFontPx;
+    const line2Y = line1Y + geometry.typographyRowGap;
+    drawInformationFrameLine(context, caption.left[0], geometry.leftRuleX + geometry.leftTextInset, line1Y, geometry.leftColumnWidth, geometry.captionFontPx, geometry.minimumCaptionFontPx);
+    drawInformationFrameLine(context, caption.left[1], geometry.leftRuleX + geometry.leftTextInset, line2Y, geometry.leftColumnWidth, geometry.captionFontPx, geometry.minimumCaptionFontPx);
+    drawInformationFrameLine(context, caption.right[0], geometry.centerRuleX + geometry.rightTextInset, line1Y, geometry.rightColumnWidth, geometry.captionFontPx, geometry.minimumCaptionFontPx);
+    drawInformationFrameLine(context, caption.right[1], geometry.centerRuleX + geometry.rightTextInset, line2Y, geometry.rightColumnWidth, geometry.captionFontPx, geometry.minimumCaptionFontPx);
+    return { bytes: await canvasJpegBytes(canvas, quality), canvas, geometry };
+  } catch (error) {
+    if (canvas) releaseCanvas(canvas);
+    throw error;
+  } finally {
+    releaseCanvas(corrected);
+  }
+}

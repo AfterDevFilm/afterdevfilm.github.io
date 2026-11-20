@@ -1,1 +1,42 @@
-export const INTEGER_INPUT_LABELS=Object.freeze({boxSpeed:"박스 감도",ei:"노출 지수(EI)",rollNumber:"롤 번호"});export function canonicalIntegerInput(e,n=2n**63n-1n){const t=String(e??"");if(!t)return"";if(!/^[0-9]+$/.test(t))return null;try{const e=BigInt(t);if(e<1n||e>n)return null;return e.toString()}catch{return null}}export function prepareIntegerFieldInput(e,n,t){const r=INTEGER_INPUT_LABELS[e];if(!r)return{accepted:true,value:n};if(n===t)return{accepted:true,value:t};const u=e==="boxSpeed"||e==="ei"?9999999n:2n**63n-1n;const o=canonicalIntegerInput(n,u);if(o!==null)return{accepted:true,value:o};return{accepted:false,rejection:/^[0-9]+$/.test(String(n??""))?"range":"notDigits",message:`'${r}'에 숫자가 아닌 값이 있어요: '${n}'. 고친 뒤 다시 저장해 주세요.`}}export function rollNumberProposal(e){const n=String(e??"");if(!n||n==="—"||n==="-")return{value:null,memo:false,confirmation:false};const t=canonicalIntegerInput(n);if(t===null||t==="")return{value:null,memo:true,confirmation:false};return{value:t,memo:false,confirmation:false}}
+export const INTEGER_INPUT_LABELS = Object.freeze({
+  boxSpeed: "박스 감도",
+  ei: "노출 지수(EI)",
+  rollNumber: "롤 번호",
+});
+
+export function canonicalIntegerInput(raw, maximum = (2n ** 63n) - 1n) {
+  const input = String(raw ?? "");
+  if (!input) return "";
+  if (!/^[0-9]+$/.test(input)) return null;
+  try {
+    const value = BigInt(input);
+    if (value < 1n || value > maximum) return null;
+    return value.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function prepareIntegerFieldInput(key, typed, stored) {
+  const label = INTEGER_INPUT_LABELS[key];
+  if (!label) return { accepted: true, value: typed };
+  if (typed === stored) return { accepted: true, value: stored };
+  const maximum = key === "ei" ? 65_535n : key === "boxSpeed" ? 9_999_999n : (2n ** 63n) - 1n;
+  const canonical = canonicalIntegerInput(typed, maximum);
+  if (canonical !== null) return { accepted: true, value: canonical };
+  return {
+    accepted: false,
+    rejection: /^[0-9]+$/.test(String(typed ?? "")) ? "range" : "notDigits",
+    message: key === "ei" && /^[0-9]+$/.test(String(typed ?? ""))
+      ? "'노출 지수(EI)'는 1부터 65,535까지 넣을 수 있어요."
+      : `'${label}'에 숫자가 아닌 값이 있어요: '${typed}'. 고친 뒤 다시 “완료”를 눌러 주세요.`,
+  };
+}
+
+export function rollNumberProposal(raw) {
+  const value = String(raw ?? "");
+  if (!value || value === "—" || value === "-") return { value: null, memo: false, confirmation: false };
+  const canonical = canonicalIntegerInput(value);
+  if (canonical === null || canonical === "") return { value: null, memo: true, confirmation: false };
+  return { value: canonical, memo: false, confirmation: false };
+}

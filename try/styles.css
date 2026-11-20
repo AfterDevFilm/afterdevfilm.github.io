@@ -566,7 +566,7 @@ h2 {
 }
 .bulk-terminal-actions {
   display: grid;
-  
+  /* 끝내기 and 내보내기 take half each. */
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
   margin-top: 8px;
@@ -584,7 +584,7 @@ h2 {
   right: 0;
   bottom: calc(100% + 8px);
   display: grid;
-  
+  /* The menu hangs from the 컷 번호 바꾸기 button and fits its words. */
   width: max-content;
   min-width: calc(50% - 4px);
   max-width: calc(100vw - 24px);
@@ -594,7 +594,7 @@ h2 {
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--surface);
-  
+  /* White card, 1px line, no shadow. */
   box-shadow: none;
 }
 .bulk-number-menu hr {
@@ -949,7 +949,37 @@ h2 {
   gap: 12px;
 }
 .template-line span:first-child { white-space: nowrap; }
-.template-cut-lines .template-line { display: block; }
+.record-confirm-screen .template-lines,
+.record-confirm-screen .record-unread-lines { font-family: inherit; }
+.template-cut-lines { font-size: 1.0625rem; line-height: 1.59375rem; gap: 12px; }
+.template-cut-lines .template-line {
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: start;
+}
+.template-cut-photo {
+  width: 72px;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+}
+.template-cut-photo canvas { display: block; width: 72px; height: 72px; object-fit: contain; }
+.template-cut-photo-none {
+  border: 1px dashed var(--ink-muted);
+  color: var(--ink-muted);
+  text-align: center;
+  white-space: pre;
+  padding: 0 12px;
+}
+.template-cut-values { min-width: 0; display: grid; gap: 2px; }
+.template-cut-lines .template-line .template-line-text { white-space: normal; }
+.template-cut-photo-warning { color: var(--warn); }
+.record-confirm-notices .record-cut-photo-guide {
+  color: var(--ink);
+  font-size: 1.0625rem;
+  line-height: 1.59375rem;
+}
 .template-line .field-message { grid-column: 1 / -1; margin: 0; padding: 8px; font-family: inherit; }
 .record-confirm-notices {
   display: grid;
@@ -1398,10 +1428,37 @@ label:has(input:focus-visible) > span {
 .feedback-link a { display: inline-block; min-height: 44px; padding: 12px 8px; color: var(--accent); font-weight: 700; }
 .feedback-link a + a { margin-left: 4px; }
 
-
+/* Copyright line below the app screens. */
 .site-copyright {
   margin: 32px 16px 24px;
   text-align: center;
   font-size: 0.75rem;
   color: var(--ink-muted, #6b6f6a);
 }
+
+.record-zero-cut > p { margin: 8px 0; }
+.record-zero-cut-previews { display: flex; gap: 8px; margin-top: 12px; }
+.record-zero-cut-previews > div { flex: 1; min-width: 0; color: var(--ink-muted); }
+.record-zero-cut-photo { height: 72px; margin-top: 4px; background: var(--mist); }
+.record-zero-cut-photo canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+.record-zero-cut-caption { font-size: 0.875rem; color: var(--ink-muted); }
+.record-zero-cut-field { display: flex; justify-content: space-between; gap: 8px; width: 100%; text-align: left; }
+.record-zero-cut-menu { margin-top: 4px; max-height: 240px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.record-zero-cut-menu button { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 10px 12px; text-align: left; background: transparent; border: 0; border-radius: 0; }
+.record-zero-cut-menu small { display: block; margin-top: 2px; font-size: 0.75rem; color: var(--ink-muted); }
+.record-zero-cut-result { display: grid; gap: 8px; margin-top: 12px; }
+.record-zero-cut-result p { margin: 0; }
+.record-zero-cut > .muted { color: var(--ink-muted); }
+
+/* The pending review stays behind this independent confirmation surface. */
+.record-zero-cut-dialog { display: flex; flex-direction: column; max-height: calc(100dvh - 2 * var(--side-margin)); min-height: 0; }
+.record-zero-cut { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding-bottom: 1rem; }
+.record-zero-cut > * { flex-shrink: 0; }
+.record-zero-cut .record-zero-cut-menu { flex: 0 1 auto; min-height: 3rem; max-height: 15rem; box-shadow: none; }
+.record-zero-cut-menu[hidden] { display: none; }
+.record-zero-cut-dialog .dialog-actions { flex-shrink: 0; }
+.record-zero-cut-dialog .dialog-actions button { container-type: inline-size; word-break: keep-all; overflow-wrap: normal; padding-inline: 0; }
+.record-zero-cut-dialog .dialog-actions button span { font-size: min(1rem, 24cqi); }
+.record-zero-cut-dialog .dialog-confirm:disabled { background: var(--line); color: var(--ink-disabled); cursor: default; }
+.record-zero-cut .record-zero-cut-result p { color: var(--ink); }
+.number-unit { white-space: nowrap; }

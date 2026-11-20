@@ -1,1 +1,98 @@
-import{cleanExposureRational as t}from"../core/value-rules.js";import{insertXmp as e,stripMetadataSegments as r}from"../core/jpeg.js";function n(){if(!globalThis.piexif)throw new Error("EXIF 도구를 불러오지 못했어요.");return globalThis.piexif}function o(t){return/^[\x20-\x7e]*$/.test(String(t))}function i(t){let e="";for(let r=0;r<t.length;r+=32768){e+=String.fromCharCode(...t.subarray(r,r+32768))}return e}function s(t){const e=new Uint8Array(t.length);for(let r=0;r<t.length;r+=1)e[r]=t.charCodeAt(r);return e}function u(t){const e=String(t??"").trim().match(/^([+-]?)(\d{1,5})(?:\.(\d{1,4}))?$/);if(!e)return null;const r=e[3]??"";const n=10**r.length;let o=Number(e[2])*n+Number(r||0);if(e[1]==="-")o*=-1;const i=((t,e)=>{while(e)[t,e]=[e,t%e];return Math.abs(t)||1})(o,n);return[o/i,n/i]}function c(t){const e=String(t??"").trim();return e||null}function a(t,e="",r=""){const n=c(t);if(!n)return null;const o=n.replace(/^f\/?/i,"").replace(/mm$/i,"").trim();if(!/^\d+(?:\.\d+)?$/.test(o))return n;const i=Number(o);return Number.isFinite(i)?`${e}${i}${r}`:n}function l(t){const e=c(t);if(!e||!/^[+-]?\d+(?:\.\d+)?$/.test(e))return e;const r=Number(e);return Number.isFinite(r)?r.toFixed(1):e}export function writeExif(e,r){const c=n();const a={};const l={};if(r.camera&&o(r.camera))a[272]=r.camera;if(r.lens&&o(r.lens))l[42036]=r.lens;const f=t("aperture",r.ap);const m=t("shutter",r.sh);const p=t("focalLength",r.focal);const h=u(r.ev);if(f)l[33437]=f;if(m)l[33434]=m;if(p)l[37386]=p;if(h)l[37380]=h;const b=Number(r.ei);if(Number.isInteger(b)&&b>0&&b<=65535)l[34855]=b;const d=c.dump({"0th":a,Exif:l,GPS:{},Interop:{},"1st":{},thumbnail:null});const g=`data:image/jpeg;base64,${btoa(i(e))}`;const x=c.insert(d,g);return s(atob(x.slice(x.indexOf(",")+1)))}export function writePhotoMetadata(t,n){const o=writeExif(r(t),n);return e(o,{FilmStock:c(n.film),FilmManufacturer:c(n.maker),BoxSpeed:c(n.boxSpeed),ExposureIndex:c(n.ei),FocalLength:a(n.focal,"","mm"),Aperture:a(n.ap),Shutter:c(n.sh),ExposureCompensation:l(n.ev),DevelopmentProcess:c(n.process),Lab:c(n.lab),Roll:c(n.rollNumber??n.roll),FrameNumber:c(n.frame),ShootingDate:c(n.date)})}
+import { cleanExposureRational } from "../core/value-rules.js";
+import { insertXmp, stripMetadataSegments } from "../core/jpeg.js";
+
+function library() {
+  if (!globalThis.piexif) throw new Error("EXIF 도구를 불러오지 못했어요.");
+  return globalThis.piexif;
+}
+
+function isAscii(value) {
+  return /^[\x20-\x7e]*$/.test(String(value));
+}
+
+function binaryString(bytes) {
+  let value = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    value += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return value;
+}
+
+function bytesFromBinary(value) {
+  const bytes = new Uint8Array(value.length);
+  for (let index = 0; index < value.length; index += 1) bytes[index] = value.charCodeAt(index);
+  return bytes;
+}
+
+function signedRational(value) {
+  const match = String(value ?? "").trim().match(/^([+-]?)(\d{1,5})(?:\.(\d{1,4}))?$/);
+  if (!match) return null;
+  const fraction = match[3] ?? "";
+  const denominator = 10 ** fraction.length;
+  let numerator = Number(match[2]) * denominator + Number(fraction || 0);
+  if (match[1] === "-") numerator *= -1;
+  const divisor = ((a, b) => { while (b) [a, b] = [b, a % b]; return Math.abs(a) || 1; })(numerator, denominator);
+  return [numerator / divisor, denominator / divisor];
+}
+
+function cleanText(value) {
+  const text = String(value ?? "").trim();
+  return text || null;
+}
+
+function canonicalNumber(value, prefix = "", suffix = "") {
+  const text = cleanText(value);
+  if (!text) return null;
+  const numeric = text.replace(/^f\/?/i, "").replace(/mm$/i, "").trim();
+  if (!/^\d+(?:\.\d+)?$/.test(numeric)) return text;
+  const number = Number(numeric);
+  return Number.isFinite(number) ? `${prefix}${number}${suffix}` : text;
+}
+
+function canonicalExposureCompensation(value) {
+  const text = cleanText(value);
+  if (!text || !/^[+-]?\d+(?:\.\d+)?$/.test(text)) return text;
+  const number = Number(text);
+  return Number.isFinite(number) ? number.toFixed(1) : text;
+}
+
+export function writeExif(jpegBytes, record) {
+  const piexif = library();
+  const zeroth = {};
+  const exif = {};
+  if (record.camera && isAscii(record.camera)) zeroth[272] = record.camera;
+  if (record.lens && isAscii(record.lens)) exif[42036] = record.lens;
+  const aperture = cleanExposureRational("aperture", record.ap);
+  const shutter = cleanExposureRational("shutter", record.sh);
+  const focal = cleanExposureRational("focalLength", record.focal);
+  const bias = signedRational(record.ev);
+  if (aperture) exif[33437] = aperture;
+  if (shutter) exif[33434] = shutter;
+  if (focal) exif[37386] = focal;
+  if (bias) exif[37380] = bias;
+  const iso = Number(record.ei);
+  if (Number.isInteger(iso) && iso > 0 && iso <= 65535) exif[34855] = iso;
+  const dumped = piexif.dump({ "0th": zeroth, Exif: exif, GPS: {}, Interop: {}, "1st": {}, thumbnail: null });
+  const input = `data:image/jpeg;base64,${btoa(binaryString(jpegBytes))}`;
+  const output = piexif.insert(dumped, input);
+  return bytesFromBinary(atob(output.slice(output.indexOf(",") + 1)));
+}
+
+export function writePhotoMetadata(jpegBytes, record) {
+  const withExif = writeExif(stripMetadataSegments(jpegBytes), record);
+  return insertXmp(withExif, {
+    FilmStock: cleanText(record.film),
+    FilmManufacturer: cleanText(record.maker),
+    BoxSpeed: cleanText(record.boxSpeed),
+    ExposureIndex: cleanText(record.ei),
+    FocalLength: canonicalNumber(record.focal, "", "mm"),
+    Aperture: canonicalNumber(record.ap),
+    Shutter: cleanText(record.sh),
+    ExposureCompensation: canonicalExposureCompensation(record.ev),
+    DevelopmentProcess: cleanText(record.process),
+    Lab: cleanText(record.lab),
+    Roll: cleanText(record.rollNumber ?? record.roll),
+    FrameNumber: cleanText(record.frame),
+    ShootingDate: cleanText(record.date),
+  });
+}

@@ -1,1 +1,71 @@
-import{compactNumbers as e}from"./export-rules.js";import{isMatchableRecordNumber as t}from"./match.js";export const TEMPLATE_CONFIRMATION_KIND=Object.freeze({ambiguousValue:"AMBIGUOUS_VALUE",ambiguousNumber:"AMBIGUOUS_NUMBER",duplicateNumber:"DUPLICATE_NUMBER"});export function templateConfirmationNoticeLines(e){const t=new Set(e??[]);const n=[];if(t.has(TEMPLATE_CONFIRMATION_KIND.ambiguousValue)){n.push("확인이 필요한 값이 있어요.")}if(t.has(TEMPLATE_CONFIRMATION_KIND.ambiguousNumber)||t.has(TEMPLATE_CONFIRMATION_KIND.duplicateNumber)){n.push("번호가 맞지 않는 줄이 있어요. 확인해 주세요.")}return n}export const TEMPLATE_ROLL_FIELDS=[["name","롤 이름"],["camera","카메라"],["lens","렌즈"],["focal","초점거리(mm)"],["film","필름"],["maker","필름 제조사"],["boxSpeed","박스 감도"],["ei","노출 지수(EI)"],["process","현상 방식"],["lab","현상소"],["rollNumber","롤 번호"]];export function templateCutPieces(e){const t=[["lens","렌즈",e=>e],["focal","초점거리",e=>/mm$/i.test(e)?e:`${e}mm`],["ap","조리개",e=>e],["sh","셔터",e=>e],["ev","노출 보정",e=>e],["date","촬영일",e=>e],["note","메모",e=>e]];return t.flatMap(([t,n,r])=>{const o=String(e?.[t]??"").trim();return o?[`${n} ${r(o)}`]:[]})}export function templateCutLine(e){const t=templateCutPieces(e);return`${e.n}번  ${t.length?t.join(" · "):"—"}`}export function rollMissingNumberLine(n,r){const o=new Set(r);const u=[...new Set(n)].filter(e=>!t(e)||!o.has(e)).sort((e,t)=>e-t);return u.length?`롤에 없는 번호: ${e(u)}번`:null}export function replaceRecordCutName(e,t,n){if(e.nameSource==="이 컷에만 입력")return{...e};if(e.nameSource==="가져온 기록"){return{...e,name:n||"",nameSource:n?"가져온 기록":""}}if(!e.name&&!t&&n)return{...e,name:n,nameSource:"가져온 기록"};return{...e}}
+import { compactNumbers } from "./export-rules.js";
+import { isMatchableRecordNumber } from "./match.js";
+
+export const TEMPLATE_CONFIRMATION_KIND = Object.freeze({
+  ambiguousValue: "AMBIGUOUS_VALUE",
+  ambiguousNumber: "AMBIGUOUS_NUMBER",
+  duplicateNumber: "DUPLICATE_NUMBER",
+});
+
+export function templateConfirmationNoticeLines(kinds) {
+  const present = new Set(kinds ?? []);
+  const lines = [];
+  if (present.has(TEMPLATE_CONFIRMATION_KIND.ambiguousValue)) {
+    lines.push("확인이 필요한 값이 있어요.");
+  }
+  if (present.has(TEMPLATE_CONFIRMATION_KIND.ambiguousNumber)
+    || present.has(TEMPLATE_CONFIRMATION_KIND.duplicateNumber)) {
+    lines.push("번호가 맞지 않는 줄이 있어요. 확인해 주세요.");
+  }
+  return lines;
+}
+
+export const TEMPLATE_ROLL_FIELDS = [
+  ["name", "롤 이름"],
+  ["camera", "카메라"],
+  ["lens", "렌즈"],
+  ["focal", "초점거리(mm)"],
+  ["film", "필름"],
+  ["maker", "필름 제조사"],
+  ["boxSpeed", "박스 감도"],
+  ["ei", "노출 지수(EI)"],
+  ["process", "현상 방식"],
+  ["lab", "현상소"],
+  ["rollNumber", "롤 번호"],
+];
+
+export function templateCutPieces(cut) {
+  const fields = [
+    ["lens", "렌즈", (value) => value],
+    ["focal", "초점거리", (value) => /mm$/i.test(value) ? value : `${value}mm`],
+    ["ap", "조리개", (value) => value],
+    ["sh", "셔터", (value) => value],
+    ["ev", "노출 보정", (value) => value],
+    ["date", "촬영일", (value) => value],
+    ["note", "메모", (value) => value],
+  ];
+  return fields.flatMap(([key, label, format]) => {
+    const value = String(cut?.[key] ?? "").trim();
+    return value ? [`${label} ${format(value)}`] : [];
+  });
+}
+
+export function templateCutLine(cut, numberRaw = "") {
+  const pieces = templateCutPieces(cut);
+  return `${cut.n ?? numberRaw}번  ${pieces.length ? pieces.join(" · ") : "—"}`;
+}
+
+export function rollMissingNumberLine(templateNumbers, rollNumbers) {
+  const available = new Set(rollNumbers);
+  const missing = [...new Set(templateNumbers)].filter((number) => !isMatchableRecordNumber(number) || !available.has(number)).sort((left, right) => left - right);
+  return missing.length ? `롤에 없는 번호: ${compactNumbers(missing)}번` : null;
+}
+
+export function replaceRecordCutName(meta, previousName, nextName) {
+  if (meta.nameSource === "이 컷에만 입력") return { ...meta };
+  if (meta.nameSource === "가져온 기록") {
+    return { ...meta, name: nextName || "", nameSource: nextName ? "가져온 기록" : "" };
+  }
+  if (!meta.name && !previousName && nextName) return { ...meta, name: nextName, nameSource: "가져온 기록" };
+  return { ...meta };
+}

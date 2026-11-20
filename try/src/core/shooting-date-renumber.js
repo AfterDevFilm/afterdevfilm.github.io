@@ -1,1 +1,26 @@
-export const SHOOTING_DATE_PROVENANCE=Object.freeze({none:"NONE",provider:"PROVIDER_ACCEPTED",user:"USER_AUTHORED",deleted:"USER_DELETED"});function e(e){const r=new Map;for(const t of e??[]){if(!r.has(t.frame))r.set(t.frame,[]);r.get(t.frame).push(t)}return new Map([...r].flatMap(([e,r])=>r.length===1?[[e,r[0]]]:[]))}export function reprojectProviderShootingDates(r,t){const n=e(t);return r.map(e=>{if(e.dateProvenance!==SHOOTING_DATE_PROVENANCE.provider)return{...e};return{...e,date:n.get(e.frame)?.date??""}})}
+import { isMatchableRecordNumber } from "./match.js";
+
+export const SHOOTING_DATE_PROVENANCE = Object.freeze({
+  none: "NONE",
+  provider: "PROVIDER_ACCEPTED",
+  user: "USER_AUTHORED",
+  deleted: "USER_DELETED",
+});
+
+function uniqueTemplateRowsByFrame(rows) {
+  const grouped = new Map();
+  for (const row of rows ?? []) {
+    if (!isMatchableRecordNumber(row.frame)) continue;
+    if (!grouped.has(row.frame)) grouped.set(row.frame, []);
+    grouped.get(row.frame).push(row);
+  }
+  return new Map([...grouped].flatMap(([frame, matches]) => matches.length === 1 ? [[frame, matches[0]]] : []));
+}
+
+export function reprojectProviderShootingDates(cuts, templateRows) {
+  const byFrame = uniqueTemplateRowsByFrame(templateRows);
+  return cuts.map((cut) => {
+    if (cut.dateProvenance !== SHOOTING_DATE_PROVENANCE.provider) return { ...cut };
+    return { ...cut, date: byFrame.get(cut.frame)?.date ?? "" };
+  });
+}

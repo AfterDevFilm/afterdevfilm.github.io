@@ -1,1 +1,220 @@
-export const LEVEL_ANGLE_MINIMUM=-150;export const LEVEL_ANGLE_MAXIMUM=150;export const LEVEL_ANGLE_REASONS=Object.freeze({notANumber:"NOT_A_NUMBER",notInteger:"NOT_INTEGER",outOfRange:"OUT_OF_RANGE"});export function validateLevelAngle(e){if(typeof e!=="number"||!Number.isFinite(e)){return{accepted:false,storedLevelAngle:null,reason:LEVEL_ANGLE_REASONS.notANumber}}if(!Number.isInteger(e)){return{accepted:false,storedLevelAngle:null,reason:LEVEL_ANGLE_REASONS.notInteger}}if(e<LEVEL_ANGLE_MINIMUM||e>LEVEL_ANGLE_MAXIMUM){return{accepted:false,storedLevelAngle:null,reason:LEVEL_ANGLE_REASONS.outOfRange}}return{accepted:true,storedLevelAngle:e,reason:null}}function e(e){const t=validateLevelAngle(e);if(t.accepted)return t.storedLevelAngle;const o=new TypeError(t.reason);o.code=t.reason;throw o}function t(e,t){if(!Number.isInteger(e)||!Number.isInteger(t)||e<=0||t<=0){throw new TypeError("INVALID_DIMENSIONS")}return{width:e,height:t}}function o(e){if(!Number.isInteger(e)||e<0||e>3)throw new TypeError("INVALID_QUARTER_TURNS");return e}function n(e,n,r){t(e,n);const i=o(r);return i%2?{width:n,height:e}:{width:e,height:n}}export function minimumLevelScale(o,n,r){t(o,n);const i=e(r)*Math.PI/1800;const u=Math.abs(Math.cos(i));const s=Math.abs(Math.sin(i));return Math.max(u+n/o*s,u+o/n*s)}export function formatMinimumLevelScale(e,t,o){return minimumLevelScale(e,t,o).toFixed(12)}export function samplingCorners(o,n,r){t(o,n);const i=e(r);const u=i*Math.PI/1800;const s=Math.cos(u);const c=Math.sin(u);const l=minimumLevelScale(o,n,i);const a=o/2;const p=n/2;return[["topLeft",0,0],["topRight",o,0],["bottomRight",o,n],["bottomLeft",0,n]].map(([e,t,o])=>{const n=t-a;const r=o-p;return{name:e,x:a+(s*n+c*r)/l,y:p+(-c*n+s*r)/l}})}function r(e,t,o,n,r){switch(r){case 0:return{x:e,y:t};case 1:return{x:t,y:n-e};case 2:return{x:o-e,y:n-t};case 3:return{x:o-t,y:e};default:throw new TypeError("INVALID_QUARTER_TURNS")}}export function outputToSource(t,o,{sourceWidth:i,sourceHeight:u,rotationQuarterTurns:s,horizontalFlip:c,levelAngle:l}){const a=n(i,u,s);const p=e(l);if(typeof c!=="boolean")throw new TypeError("INVALID_HORIZONTAL_FLIP");if(!Number.isFinite(t)||!Number.isFinite(o))throw new TypeError("INVALID_OUTPUT_COORDINATE");const h=c?a.width-t:t;const L=a.width/2;const f=a.height/2;const A=h-L;const E=o-f;const g=p*Math.PI/1800;const N=Math.cos(g);const I=Math.sin(g);const d=minimumLevelScale(a.width,a.height,p);return r(L+(N*A+I*E)/d,f+(-I*A+N*E)/d,i,u,s)}export function compositionSamplePoints(e){const{width:t,height:o}=n(e.sourceWidth,e.sourceHeight,e.rotationQuarterTurns);return[["topLeft",0,0],["topRight",t,0],["bottomRight",t,o],["bottomLeft",0,o],["center",t/2,o/2]].map(([t,o,n])=>{const r=outputToSource(o,n,e);return{name:t,outputX:o,outputY:n,sourceNormalizedX:r.x/e.sourceWidth,sourceNormalizedY:r.y/e.sourceHeight}})}export function outputPixelCenterToSource(e,t,o){const{width:r,height:i}=n(o.sourceWidth,o.sourceHeight,o.rotationQuarterTurns);if(!Number.isInteger(e)||!Number.isInteger(t)||e<0||e>=r||t<0||t>=i){throw new TypeError("INVALID_OUTPUT_PIXEL")}const u=e+.5;const s=t+.5;const c=outputToSource(u,s,o);return{pixelX:e,pixelY:t,outputCenterX:u,outputCenterY:s,sourceX:c.x,sourceY:c.y}}export function displayedLevelAngle(t,o){const n=e(t);if(typeof o!=="boolean")throw new TypeError("INVALID_HORIZONTAL_FLIP");return n===0?0:o?-n:n}export function storedLevelAngle(t,o){const n=e(t);if(typeof o!=="boolean")throw new TypeError("INVALID_HORIZONTAL_FLIP");return n===0?0:o?-n:n}export function levelDisplayState(e,t,n){const r=o(n);const i=displayedLevelAngle(e,t);return{displayedAngleTenth:i,roundTripStoredLevelAngle:storedLevelAngle(i,t),reset:{levelAngle:0,rotationQuarterTurns:r,horizontalFlip:t}}}export function defaultPhotoCorrection(){return{turns:0,flipped:false,levelAngle:0}}export function normalizePhotoCorrection(t={}){const o=Number.isInteger(t.turns)?t.turns:0;const n=t.levelAngle===undefined?0:e(t.levelAngle);return{turns:(o%4+4)%4,flipped:t.flipped===true,levelAngle:n}}export function rotatePhotoCorrection(e,t){if(t!==-1&&t!==1)throw new TypeError("INVALID_QUARTER_TURN_DELTA");const o=normalizePhotoCorrection(e);return{...o,turns:(o.turns+t+4)%4}}export function flipPhotoCorrection(e){const t=normalizePhotoCorrection(e);return{...t,flipped:!t.flipped}}export function resetLevelAngle(e){return{...normalizePhotoCorrection(e),levelAngle:0}}export function decideLevelExportPath({outputFormat:t,informationFrame:o,existingRouteAEligible:n,levelAngle:r}){const i=e(r);if(typeof t!=="string"||typeof o!=="boolean"||typeof n!=="boolean")throw new TypeError("INVALID_EXPORT_INPUT");const u=t==="JPEG"&&!o&&n&&i===0;const s=t==="JPEG"&&!o&&!u;return{route:u?"A":"B",includeInTxtUi0021Count:s,messageKey:s?"TXT-UI-0021":null,outputExifOrientation:u?"COMPOSED_1_TO_8":1,existingRotationFlipDecisionUnchanged:i===0}}
+export const LEVEL_ANGLE_MINIMUM = -150;
+export const LEVEL_ANGLE_MAXIMUM = 150;
+
+export const LEVEL_ANGLE_REASONS = Object.freeze({
+  notANumber: "NOT_A_NUMBER",
+  notInteger: "NOT_INTEGER",
+  outOfRange: "OUT_OF_RANGE",
+});
+
+export function validateLevelAngle(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return { accepted: false, storedLevelAngle: null, reason: LEVEL_ANGLE_REASONS.notANumber };
+  }
+  if (!Number.isInteger(value)) {
+    return { accepted: false, storedLevelAngle: null, reason: LEVEL_ANGLE_REASONS.notInteger };
+  }
+  if (value < LEVEL_ANGLE_MINIMUM || value > LEVEL_ANGLE_MAXIMUM) {
+    return { accepted: false, storedLevelAngle: null, reason: LEVEL_ANGLE_REASONS.outOfRange };
+  }
+  return { accepted: true, storedLevelAngle: value, reason: null };
+}
+
+function checkedLevelAngle(value) {
+  const result = validateLevelAngle(value);
+  if (result.accepted) return result.storedLevelAngle;
+  const error = new TypeError(result.reason);
+  error.code = result.reason;
+  throw error;
+}
+
+function checkedDimensions(width, height) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    throw new TypeError("INVALID_DIMENSIONS");
+  }
+  return { width, height };
+}
+
+function checkedQuarterTurns(value) {
+  if (!Number.isInteger(value) || value < 0 || value > 3) throw new TypeError("INVALID_QUARTER_TURNS");
+  return value;
+}
+
+function quarterDimensions(sourceWidth, sourceHeight, rotationQuarterTurns) {
+  checkedDimensions(sourceWidth, sourceHeight);
+  const quarterTurns = checkedQuarterTurns(rotationQuarterTurns);
+  return quarterTurns % 2
+    ? { width: sourceHeight, height: sourceWidth }
+    : { width: sourceWidth, height: sourceHeight };
+}
+
+/** Minimum fill scale in the rotated, pre-flip coordinate plane. */
+export function minimumLevelScale(width, height, levelAngle) {
+  checkedDimensions(width, height);
+  const theta = checkedLevelAngle(levelAngle) * Math.PI / 1800;
+  const cosine = Math.abs(Math.cos(theta));
+  const sine = Math.abs(Math.sin(theta));
+  return Math.max(cosine + (height / width) * sine, cosine + (width / height) * sine);
+}
+
+export function formatMinimumLevelScale(width, height, levelAngle) {
+  return minimumLevelScale(width, height, levelAngle).toFixed(12);
+}
+
+/** Output crop edge corners mapped into the oriented, pre-level source plane. */
+export function samplingCorners(width, height, levelAngle) {
+  checkedDimensions(width, height);
+  const storedLevelAngle = checkedLevelAngle(levelAngle);
+  const theta = storedLevelAngle * Math.PI / 1800;
+  const cosine = Math.cos(theta);
+  const sine = Math.sin(theta);
+  const scale = minimumLevelScale(width, height, storedLevelAngle);
+  const centerX = width / 2;
+  const centerY = height / 2;
+  return [
+    ["topLeft", 0, 0],
+    ["topRight", width, 0],
+    ["bottomRight", width, height],
+    ["bottomLeft", 0, height],
+  ].map(([name, outputX, outputY]) => {
+    const dx = outputX - centerX;
+    const dy = outputY - centerY;
+    return {
+      name,
+      x: centerX + (cosine * dx + sine * dy) / scale,
+      y: centerY + (-sine * dx + cosine * dy) / scale,
+    };
+  });
+}
+
+function orientedToSource(x, y, sourceWidth, sourceHeight, rotationQuarterTurns) {
+  switch (rotationQuarterTurns) {
+    case 0: return { x, y };
+    case 1: return { x: y, y: sourceHeight - x };
+    case 2: return { x: sourceWidth - x, y: sourceHeight - y };
+    case 3: return { x: sourceWidth - y, y: x };
+    default: throw new TypeError("INVALID_QUARTER_TURNS");
+  }
+}
+
+/** Continuous output edge coordinate mapped back to the EXIF-normalized source plane. */
+export function outputToSource(outputX, outputY, {
+  sourceWidth, sourceHeight, rotationQuarterTurns, horizontalFlip, levelAngle,
+}) {
+  const dimensions = quarterDimensions(sourceWidth, sourceHeight, rotationQuarterTurns);
+  const storedLevelAngle = checkedLevelAngle(levelAngle);
+  if (typeof horizontalFlip !== "boolean") throw new TypeError("INVALID_HORIZONTAL_FLIP");
+  if (!Number.isFinite(outputX) || !Number.isFinite(outputY)) throw new TypeError("INVALID_OUTPUT_COORDINATE");
+  const preFlipX = horizontalFlip ? dimensions.width - outputX : outputX;
+  const centerX = dimensions.width / 2;
+  const centerY = dimensions.height / 2;
+  const dx = preFlipX - centerX;
+  const dy = outputY - centerY;
+  const theta = storedLevelAngle * Math.PI / 1800;
+  const cosine = Math.cos(theta);
+  const sine = Math.sin(theta);
+  const scale = minimumLevelScale(dimensions.width, dimensions.height, storedLevelAngle);
+  return orientedToSource(
+    centerX + (cosine * dx + sine * dy) / scale,
+    centerY + (-sine * dx + cosine * dy) / scale,
+    sourceWidth,
+    sourceHeight,
+    rotationQuarterTurns,
+  );
+}
+
+export function compositionSamplePoints(input) {
+  const { width, height } = quarterDimensions(input.sourceWidth, input.sourceHeight, input.rotationQuarterTurns);
+  return [
+    ["topLeft", 0, 0],
+    ["topRight", width, 0],
+    ["bottomRight", width, height],
+    ["bottomLeft", 0, height],
+    ["center", width / 2, height / 2],
+  ].map(([name, outputX, outputY]) => {
+    const source = outputToSource(outputX, outputY, input);
+    return {
+      name,
+      outputX,
+      outputY,
+      sourceNormalizedX: source.x / input.sourceWidth,
+      sourceNormalizedY: source.y / input.sourceHeight,
+    };
+  });
+}
+
+/** Pixel indices are converted to their continuous centers before inverse sampling. */
+export function outputPixelCenterToSource(pixelX, pixelY, input) {
+  const { width, height } = quarterDimensions(input.sourceWidth, input.sourceHeight, input.rotationQuarterTurns);
+  if (!Number.isInteger(pixelX) || !Number.isInteger(pixelY)
+      || pixelX < 0 || pixelX >= width || pixelY < 0 || pixelY >= height) {
+    throw new TypeError("INVALID_OUTPUT_PIXEL");
+  }
+  const outputCenterX = pixelX + 0.5;
+  const outputCenterY = pixelY + 0.5;
+  const source = outputToSource(outputCenterX, outputCenterY, input);
+  return { pixelX, pixelY, outputCenterX, outputCenterY, sourceX: source.x, sourceY: source.y };
+}
+
+export function displayedLevelAngle(storedLevelAngle, horizontalFlip) {
+  const levelAngle = checkedLevelAngle(storedLevelAngle);
+  if (typeof horizontalFlip !== "boolean") throw new TypeError("INVALID_HORIZONTAL_FLIP");
+  return levelAngle === 0 ? 0 : (horizontalFlip ? -levelAngle : levelAngle);
+}
+
+export function storedLevelAngle(displayedAngle, horizontalFlip) {
+  const levelAngle = checkedLevelAngle(displayedAngle);
+  if (typeof horizontalFlip !== "boolean") throw new TypeError("INVALID_HORIZONTAL_FLIP");
+  return levelAngle === 0 ? 0 : (horizontalFlip ? -levelAngle : levelAngle);
+}
+
+export function levelDisplayState(levelAngle, horizontalFlip, rotationQuarterTurns) {
+  const quarterTurns = checkedQuarterTurns(rotationQuarterTurns);
+  const displayedAngleTenth = displayedLevelAngle(levelAngle, horizontalFlip);
+  return {
+    displayedAngleTenth,
+    roundTripStoredLevelAngle: storedLevelAngle(displayedAngleTenth, horizontalFlip),
+    reset: { levelAngle: 0, rotationQuarterTurns: quarterTurns, horizontalFlip },
+  };
+}
+
+export function defaultPhotoCorrection() {
+  return { turns: 0, flipped: false, levelAngle: 0 };
+}
+
+export function normalizePhotoCorrection(correction = {}) {
+  const rawTurns = Number.isInteger(correction.turns) ? correction.turns : 0;
+  const levelAngle = correction.levelAngle === undefined ? 0 : checkedLevelAngle(correction.levelAngle);
+  return { turns: ((rawTurns % 4) + 4) % 4, flipped: correction.flipped === true, levelAngle };
+}
+
+export function rotatePhotoCorrection(correction, quarterTurnDelta) {
+  if (quarterTurnDelta !== -1 && quarterTurnDelta !== 1) throw new TypeError("INVALID_QUARTER_TURN_DELTA");
+  const normalized = normalizePhotoCorrection(correction);
+  return { ...normalized, turns: (normalized.turns + quarterTurnDelta + 4) % 4 };
+}
+
+export function flipPhotoCorrection(correction) {
+  const normalized = normalizePhotoCorrection(correction);
+  return { ...normalized, flipped: !normalized.flipped };
+}
+
+export function resetLevelAngle(correction) {
+  return { ...normalizePhotoCorrection(correction), levelAngle: 0 };
+}
+
+/** Nonzero level selects route B. */
+export function decideLevelExportPath({ outputFormat, informationFrame, existingRouteAEligible, levelAngle }) {
+  const storedAngle = checkedLevelAngle(levelAngle);
+  if (typeof outputFormat !== "string" || typeof informationFrame !== "boolean"
+      || typeof existingRouteAEligible !== "boolean") throw new TypeError("INVALID_EXPORT_INPUT");
+  const routeA = outputFormat === "JPEG" && !informationFrame && existingRouteAEligible && storedAngle === 0;
+  const includeInTxtUi0021Count = outputFormat === "JPEG" && !informationFrame && !routeA;
+  return {
+    route: routeA ? "A" : "B",
+    includeInTxtUi0021Count,
+    messageKey: includeInTxtUi0021Count ? "TXT-UI-0021" : null,
+    outputExifOrientation: routeA ? "COMPOSED_1_TO_8" : 1,
+    existingRotationFlipDecisionUnchanged: storedAngle === 0,
+  };
+}

@@ -1,1 +1,613 @@
-export const JPEG_COMPLETENESS=Object.freeze({COMPLETE:"COMPLETE",INCOMPLETE:"INCOMPLETE",NOT_JPEG:"NOT_JPEG",UNDETERMINED:"UNDETERMINED"});export const MAX_PROGRESSIVE_STATE_BYTES=64*1024*1024;const t=-1;const e=-2;class s{constructor(t){if(!(t instanceof Uint8Array))throw new TypeError("JPEG bytes must be a Uint8Array");this.bytes=t;this.position=0}read(){return this.position<this.bytes.length?this.bytes[this.position++]:t}readFully(t){if(t<0||this.position+t>this.bytes.length)return null;const e=this.bytes.subarray(this.position,this.position+t);this.position+=t;return e}}class r{constructor(t,e){this.symbols=e;this.minCode=new Int32Array(17);this.maxCode=new Int32Array(18);this.maxCode.fill(-1);this.valuePointer=new Int32Array(17);let s=0;let r=0;for(let e=1;e<=16;e+=1){this.valuePointer[e]=r;this.minCode[e]=s;s+=t[e-1];r+=t[e-1];this.maxCode[e]=t[e-1]===0?-1:s-1;s<<=1}}}class i{constructor(t){this.source=t;this.current=0;this.count=0;this.marker=0}reset(){this.current=0;this.count=0}bit(){if(this.count===0){if(this.marker!==0)return t;let e=this.source.read();if(e<0){this.marker=t;return t}if(e===255){let s=this.source.read();while(s===255)s=this.source.read();if(s<0){this.marker=t;return t}if(s===0)e=255;else{this.marker=s;return t}}this.current=e;this.count=8}this.count-=1;return this.current>>this.count&1}skipToMarker(){let e=0;this.count=0;if(this.marker!==0)return 0;while(true){const s=this.source.read();if(s<0){this.marker=t;return e}if(s!==255){e+=1;continue}let r=this.source.read();while(r===255)r=this.source.read();if(r<0){this.marker=t;return e}if(r===0){e+=2;continue}this.marker=r;return e}}consumeMarker(){const t=this.marker;this.marker=0;return t}expectRestart(t=null){this.count=0;if(this.marker===0)this.skipToMarker();const e=t===null?this.marker>=208&&this.marker<=215:this.marker===208+(t&7);if(e)this.marker=0;return e}}function n(t,e){return Math.floor((t+e-1)/e)}function o(t){let e=0;const s=new Map;for(const r of t.components){const i=t.mcuColumns*r.h;const o=t.mcuRows*r.v;const l=i*o;if(!Number.isSafeInteger(l)||l>Math.floor((MAX_PROGRESSIVE_STATE_BYTES-e)/8))return null;e+=l*8;const h=new Int8Array(64);h.fill(-1);s.set(r.id,{component:r,paddedWidth:i,actualWidth:n(t.width*r.h,t.hMax*8),nonzero:new BigUint64Array(l),coverage:h})}return{byId:s}}class l{constructor(t){this.source=new s(t);this.bits=new i(this.source);this.dcTables=Array(4).fill(null);this.acTables=Array(4).fill(null);this.frame=null;this.progressive=null;this.restartInterval=0;this.scans=0;this.allVerified=true;this.supplied=new Set}assessment(t,e=null,s=false){return{result:t,reason:e,entropyVerified:s}}incomplete(t){return this.assessment(JPEG_COMPLETENESS.INCOMPLETE,t,false)}run(){if(this.source.read()!==255||this.source.read()!==216){return this.assessment(JPEG_COMPLETENESS.NOT_JPEG)}let s=0;while(true){const r=s!==0?s:this.nextMarker();s=0;if(r<0)return this.incomplete("ENDED_BEFORE_EOI");if(r===217){if(this.scans===0)return this.incomplete("NO_SCAN");if(this.missingComponents())return this.incomplete("COMPONENT_NOT_SUPPLIED");if(this.missingProgressiveCoverage())return this.incomplete("PROGRESSIVE_COVERAGE_INCOMPLETE");return this.assessment(JPEG_COMPLETENESS.COMPLETE,null,this.allVerified&&this.scans>0)}if(r===1||r>=208&&r<=216||r===0||r===255)continue;const i=this.readLength();if(i===null)return this.incomplete("ENDED_BEFORE_EOI");const n=this.source.readFully(i-2);if(n===null)return this.incomplete("ENDED_BEFORE_EOI");if(r===192||r===193||r===194)this.parseFrame(r,n);else if(r===196)this.parseHuffman(n);else if(r===221&&n.length>=2)this.restartInterval=n[0]<<8|n[1];else if(r===218){this.scans+=1;const r=this.scan(n);if(r===t)return this.incomplete("ENDED_BEFORE_EOI");if(r===e)return this.incomplete("ENTROPY_SHORT");s=r}else if((r===195||r>=197&&r<=207)&&r!==200&&r!==204){this.frame=null;this.progressive=null;this.allVerified=false}}}nextMarker(){while(true){let e=this.source.read();if(e<0)return t;if(e!==255)continue;e=this.source.read();while(e===255)e=this.source.read();if(e<0)return t;if(e!==0)return e}}readLength(){const t=this.source.read();const e=this.source.read();if(t<0||e<0)return null;return Math.max(2,t<<8|e)}parseFrame(t,e){if(e.length<6){this.frame=null;this.progressive=null;this.allVerified=false;return}const s=e[0];const r=e[1]<<8|e[2];const i=e[3]<<8|e[4];const l=e[5];if(l===0||e.length<6+3*l){this.frame=null;this.progressive=null;this.allVerified=false;return}const h=Array.from({length:l},(t,s)=>{const r=e[7+s*3];return{id:e[6+s*3],h:Math.max(1,r>>4),v:Math.max(1,r&15)}});const a=Math.max(...h.map(t=>t.h));const u=Math.max(...h.map(t=>t.v));const c=t!==194&&s===8&&r>0&&i>0;const f=t===194&&s===8&&r>0&&i>0;this.frame={precision:s,height:r,width:i,components:h,hMax:a,vMax:u,sequentialHuffman:c,progressiveHuffman:f,mcuColumns:n(i,8*a),mcuRows:n(r,8*u)};this.progressive=f?o(this.frame):null;if(f&&this.progressive===null)this.allVerified=false;this.supplied.clear()}parseHuffman(t){let e=0;while(e+17<=t.length){const s=t[e]>>4;const i=t[e]&15;const n=t.subarray(e+1,e+17);const o=n.reduce((t,e)=>t+e,0);if(e+17+o>t.length||i>3||s>1)return;const l=new r(n,t.slice(e+17,e+17+o));if(s===0)this.dcTables[i]=l;else this.acTables[i]=l;e+=17+o}}scan(t){this.bits.reset();const e=this.frame;if(e?.progressiveHuffman){if(this.progressive===null){this.allVerified=false;this.bits.skipToMarker();return this.bits.consumeMarker()}return this.scanProgressive(e,this.progressive,t)}if(!e?.sequentialHuffman||!this.verifiableScan(e,t)){this.allVerified=false;this.bits.skipToMarker();return this.bits.consumeMarker()}const s=t[0];const r=[];for(let i=0;i<s;i+=1){const s=t[1+i*2];const n=t[2+i*2];r.push({component:e.components.find(t=>t.id===s),dc:this.dcTables[n>>4],ac:this.acTables[n&15]})}if(r.some(t=>!t.component||!t.dc||!t.ac)){this.allVerified=false;this.bits.skipToMarker();return this.bits.consumeMarker()}const i=this.geometry(e,r.map(t=>t.component));let n=0;for(let t=0;t<i;t+=1){if(this.restartInterval>0&&n===this.restartInterval){if(!this.bits.expectRestart())return this.shortOrEof();n=0}for(const t of r){const e=s>1?t.component.h*t.component.v:1;for(let s=0;s<e;s+=1){if(!this.decodeBlock(t.dc,t.ac))return this.shortOrEof()}}n+=1}for(const t of r)this.supplied.add(t.component.id);this.bits.skipToMarker();return this.bits.consumeMarker()}scanProgressive(t,s,r){if(r.length===0)return e;const i=r[0];if(i<1||i>4||r.length<1+i*2+3)return e;const n=r[1+i*2];const o=r[2+i*2];const l=r[3+i*2];const h=l>>4;const a=l&15;const u=n===0&&o===0;if(!u&&(i!==1||n<1||n>63||o<n||o>63)||u&&(n!==0||o!==0))return e;if(h!==0&&h!==a+1)return e;const c=[];for(let t=0;t<i;t+=1){const i=r[1+t*2];const n=r[2+t*2];if(n>>4>3||(n&15)>3)return e;const o=s.byId.get(i);if(!o)return e;c.push({state:o,dc:this.dcTables[n>>4],ac:this.acTables[n&15]})}for(const t of c){for(let s=n;s<=o;s+=1){if(h===0?t.state.coverage[s]!==-1:t.state.coverage[s]!==h)return e}}if(u&&h===0&&c.some(t=>!t.dc))return e;if(!u&&c.some(t=>!t.ac))return e;const f=this.geometry(t,c.map(t=>t.state.component));let m=0;let d=0;let p=0;for(let e=0;e<f;e+=1){if(this.restartInterval>0&&m===this.restartInterval){if(p!==0||!this.bits.expectRestart(d))return this.shortOrEof();d=d+1&7;m=0}for(const s of c){const r=s.state.component;const l=i>1?r.h*r.v:1;for(let r=0;r<l;r+=1){const l=this.progressiveBlockIndex(t,s.state,i,e,r);const a=s.state.nonzero[l];let c;if(u&&h===0)c=this.decodeDcFirst(s.dc,a);else if(u)c=this.decodeDcRefine(a);else if(h===0)c=this.decodeAcFirst(s.ac,a,n,o,p);else c=this.decodeAcRefine(s.ac,a,n,o,p);if(c===null)return this.shortOrEof();s.state.nonzero[l]=c.mask;p=c.eobRun}}m+=1}if(p!==0)return e;for(const t of c){for(let e=n;e<=o;e+=1)t.state.coverage[e]=a}this.bits.skipToMarker();return this.bits.consumeMarker()}progressiveBlockIndex(t,e,s,r,i){if(s===1)return Math.floor(r/e.actualWidth)*e.paddedWidth+r%e.actualWidth;const n=r%t.mcuColumns;const o=Math.floor(r/t.mcuColumns);const l=i%e.component.h;const h=Math.floor(i/e.component.h);return(o*e.component.v+h)*e.paddedWidth+n*e.component.h+l}decodeDcFirst(t,e){const s=this.decodeSymbol(t);if(s<0||s>15||!this.skipBits(s))return null;return{mask:s===0?e:e|1n,eobRun:0}}decodeDcRefine(t){const e=this.bits.bit();return e<0?null:{mask:e===0?t:t|1n,eobRun:0}}decodeAcFirst(t,e,s,r,i){let n=e;let o=i;if(o>0)return{mask:n,eobRun:o-1};let l=s;while(l<=r){const e=this.decodeSymbol(t);if(e<0)return null;const s=e>>4;const i=e&15;if(i===0){if(s===15){l+=16;if(l>r+1)return null;continue}const t=this.readBits(s);if(t===null)return null;o=(1<<s)+t-1;return{mask:n,eobRun:o}}if(i<1||i>15)return null;l+=s;if(l>r||this.readBits(i)===null)return null;n|=1n<<BigInt(l);l+=1}return{mask:n,eobRun:o}}decodeAcRefine(t,e,s,r,i){let n=e;let o=i;let l=s;if(o===0){while(l<=r){const e=this.decodeSymbol(t);if(e<0)return null;let s=e>>4;const i=e&15;let h=false;if(i===0){if(s<15){const t=this.readBits(s);if(t===null)return null;o=(1<<s)+t;break}}else{if(i!==1||this.bits.bit()<0)return null;h=true}let a=false;while(l<=r){if((n&1n<<BigInt(l))!==0n){if(this.bits.bit()<0)return null}else{s-=1;if(s<0){a=true;break}}l+=1}if(!a)return null;if(h)n|=1n<<BigInt(l);l+=1}}if(o>0){while(l<=r){if((n&1n<<BigInt(l))!==0n&&this.bits.bit()<0)return null;l+=1}o-=1}return{mask:n,eobRun:o}}missingComponents(){return Boolean(this.frame?.sequentialHuffman&&this.allVerified&&this.frame.components.some(t=>!this.supplied.has(t.id)))}missingProgressiveCoverage(){if(!this.frame?.progressiveHuffman||!this.allVerified||!this.progressive)return false;return[...this.progressive.byId.values()].some(t=>t.coverage.some(t=>t!==0))}verifiableScan(t,e){if(e.length===0)return false;const s=e[0];if(s<1||s>4||e.length<1+s*2+3)return false;if(e[1+s*2]!==0||e[2+s*2]!==63||e[3+s*2]!==0)return false;for(let r=0;r<s;r+=1){if(!t.components.some(t=>t.id===e[1+r*2]))return false}return true}geometry(t,e){if(e.length===1){const s=e[0];const r=n(t.width*s.h,t.hMax);const i=n(t.height*s.v,t.vMax);return n(r,8)*n(i,8)}return n(t.width,8*t.hMax)*n(t.height,8*t.vMax)}decodeBlock(t,e){const s=this.decodeSymbol(t);if(s<0||s>0&&!this.skipBits(s))return false;let r=1;while(r<64){const t=this.decodeSymbol(e);if(t<0)return false;const s=t>>4;const i=t&15;if(i!==0){r+=s;if(!this.skipBits(i))return false;r+=1}else{if(s!==15)break;r+=16}}return true}decodeSymbol(e){let s=this.bits.bit();if(s<0)return t;let r=1;while(s>e.maxCode[r]){r+=1;if(r>16)return t;const e=this.bits.bit();if(e<0)return t;s=s<<1|e}const i=e.valuePointer[r]+s-e.minCode[r];return i>=0&&i<e.symbols.length?e.symbols[i]:t}readBits(t){let e=0;for(let s=0;s<t;s+=1){const t=this.bits.bit();if(t<0)return null;e=e<<1|t}return e}skipBits(t){for(let e=0;e<t;e+=1)if(this.bits.bit()<0)return false;return true}shortOrEof(){return this.bits.marker===t?t:e}}export function assessJpegCompleteness(t){return new l(t).run()}export function judgeJpegCompleteness(t){const e=assessJpegCompleteness(t);return{...e,state:e.result===JPEG_COMPLETENESS.COMPLETE&&!e.entropyVerified?JPEG_COMPLETENESS.UNDETERMINED:e.result}}
+// Byte-only JPEG Scan completeness judgement, ported from the Android/iOS assessors at app ee2e05d8.
+// No pixels or coefficient magnitudes are retained. Progressive state is capped at 64 MiB.
+
+export const JPEG_COMPLETENESS = Object.freeze({
+  COMPLETE: "COMPLETE",
+  INCOMPLETE: "INCOMPLETE",
+  NOT_JPEG: "NOT_JPEG",
+  UNDETERMINED: "UNDETERMINED",
+});
+
+export const MAX_PROGRESSIVE_STATE_BYTES = 64 * 1024 * 1024;
+
+const EOF = -1;
+const SHORT = -2;
+
+class Source {
+  constructor(bytes) {
+    if (!(bytes instanceof Uint8Array)) throw new TypeError("JPEG bytes must be a Uint8Array");
+    this.bytes = bytes;
+    this.position = 0;
+  }
+
+  read() {
+    return this.position < this.bytes.length ? this.bytes[this.position++] : EOF;
+  }
+
+  readFully(count) {
+    if (count < 0 || this.position + count > this.bytes.length) return null;
+    const value = this.bytes.subarray(this.position, this.position + count);
+    this.position += count;
+    return value;
+  }
+}
+
+class HuffmanTable {
+  constructor(counts, symbols) {
+    this.symbols = symbols;
+    this.minCode = new Int32Array(17);
+    this.maxCode = new Int32Array(18);
+    this.maxCode.fill(-1);
+    this.valuePointer = new Int32Array(17);
+    let code = 0;
+    let symbolIndex = 0;
+    for (let length = 1; length <= 16; length += 1) {
+      this.valuePointer[length] = symbolIndex;
+      this.minCode[length] = code;
+      code += counts[length - 1];
+      symbolIndex += counts[length - 1];
+      this.maxCode[length] = counts[length - 1] === 0 ? -1 : code - 1;
+      code <<= 1;
+    }
+  }
+}
+
+class Bits {
+  constructor(source) {
+    this.source = source;
+    this.current = 0;
+    this.count = 0;
+    this.marker = 0;
+  }
+
+  reset() {
+    this.current = 0;
+    this.count = 0;
+  }
+
+  bit() {
+    if (this.count === 0) {
+      if (this.marker !== 0) return EOF;
+      let byte = this.source.read();
+      if (byte < 0) {
+        this.marker = EOF;
+        return EOF;
+      }
+      if (byte === 0xff) {
+        let next = this.source.read();
+        while (next === 0xff) next = this.source.read();
+        if (next < 0) {
+          this.marker = EOF;
+          return EOF;
+        }
+        if (next === 0x00) byte = 0xff;
+        else {
+          this.marker = next;
+          return EOF;
+        }
+      }
+      this.current = byte;
+      this.count = 8;
+    }
+    this.count -= 1;
+    return (this.current >> this.count) & 1;
+  }
+
+  skipToMarker() {
+    let skipped = 0;
+    this.count = 0;
+    if (this.marker !== 0) return 0;
+    while (true) {
+      const byte = this.source.read();
+      if (byte < 0) {
+        this.marker = EOF;
+        return skipped;
+      }
+      if (byte !== 0xff) {
+        skipped += 1;
+        continue;
+      }
+      let next = this.source.read();
+      while (next === 0xff) next = this.source.read();
+      if (next < 0) {
+        this.marker = EOF;
+        return skipped;
+      }
+      if (next === 0x00) {
+        skipped += 2;
+        continue;
+      }
+      this.marker = next;
+      return skipped;
+    }
+  }
+
+  consumeMarker() {
+    const marker = this.marker;
+    this.marker = 0;
+    return marker;
+  }
+
+  expectRestart(expected = null) {
+    this.count = 0;
+    if (this.marker === 0) this.skipToMarker();
+    const matches = expected === null
+      ? this.marker >= 0xd0 && this.marker <= 0xd7
+      : this.marker === 0xd0 + (expected & 7);
+    if (matches) this.marker = 0;
+    return matches;
+  }
+}
+
+function ceilDiv(value, divisor) {
+  return Math.floor((value + divisor - 1) / divisor);
+}
+
+function progressiveState(frame) {
+  let bytes = 0;
+  const byId = new Map();
+  for (const component of frame.components) {
+    const paddedWidth = frame.mcuColumns * component.h;
+    const paddedHeight = frame.mcuRows * component.v;
+    const blocks = paddedWidth * paddedHeight;
+    if (!Number.isSafeInteger(blocks) || blocks > Math.floor((MAX_PROGRESSIVE_STATE_BYTES - bytes) / 8)) return null;
+    bytes += blocks * 8;
+    const coverage = new Int8Array(64);
+    coverage.fill(-1);
+    byId.set(component.id, {
+      component,
+      paddedWidth,
+      actualWidth: ceilDiv(frame.width * component.h, frame.hMax * 8),
+      nonzero: new BigUint64Array(blocks),
+      coverage,
+    });
+  }
+  return { byId };
+}
+
+class Walker {
+  constructor(bytes) {
+    this.source = new Source(bytes);
+    this.bits = new Bits(this.source);
+    this.dcTables = Array(4).fill(null);
+    this.acTables = Array(4).fill(null);
+    this.frame = null;
+    this.progressive = null;
+    this.restartInterval = 0;
+    this.scans = 0;
+    this.allVerified = true;
+    this.supplied = new Set();
+  }
+
+  assessment(result, reason = null, entropyVerified = false) {
+    return { result, reason, entropyVerified };
+  }
+
+  incomplete(reason) {
+    return this.assessment(JPEG_COMPLETENESS.INCOMPLETE, reason, false);
+  }
+
+  run() {
+    if (this.source.read() !== 0xff || this.source.read() !== 0xd8) {
+      return this.assessment(JPEG_COMPLETENESS.NOT_JPEG);
+    }
+    let pendingMarker = 0;
+    while (true) {
+      const marker = pendingMarker !== 0 ? pendingMarker : this.nextMarker();
+      pendingMarker = 0;
+      if (marker < 0) return this.incomplete("ENDED_BEFORE_EOI");
+      if (marker === 0xd9) {
+        if (this.scans === 0) return this.incomplete("NO_SCAN");
+        if (this.missingComponents()) return this.incomplete("COMPONENT_NOT_SUPPLIED");
+        if (this.missingProgressiveCoverage()) return this.incomplete("PROGRESSIVE_COVERAGE_INCOMPLETE");
+        return this.assessment(JPEG_COMPLETENESS.COMPLETE, null, this.allVerified && this.scans > 0);
+      }
+      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8) || marker === 0x00 || marker === 0xff) continue;
+      const length = this.readLength();
+      if (length === null) return this.incomplete("ENDED_BEFORE_EOI");
+      const payload = this.source.readFully(length - 2);
+      if (payload === null) return this.incomplete("ENDED_BEFORE_EOI");
+      if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) this.parseFrame(marker, payload);
+      else if (marker === 0xc4) this.parseHuffman(payload);
+      else if (marker === 0xdd && payload.length >= 2) this.restartInterval = (payload[0] << 8) | payload[1];
+      else if (marker === 0xda) {
+        this.scans += 1;
+        const next = this.scan(payload);
+        if (next === EOF) return this.incomplete("ENDED_BEFORE_EOI");
+        if (next === SHORT) return this.incomplete("ENTROPY_SHORT");
+        pendingMarker = next;
+      } else if ((marker === 0xc3 || (marker >= 0xc5 && marker <= 0xcf)) && marker !== 0xc8 && marker !== 0xcc) {
+        this.frame = null;
+        this.progressive = null;
+        this.allVerified = false;
+      }
+    }
+  }
+
+  nextMarker() {
+    while (true) {
+      let byte = this.source.read();
+      if (byte < 0) return EOF;
+      if (byte !== 0xff) continue;
+      byte = this.source.read();
+      while (byte === 0xff) byte = this.source.read();
+      if (byte < 0) return EOF;
+      if (byte !== 0x00) return byte;
+    }
+  }
+
+  readLength() {
+    const high = this.source.read();
+    const low = this.source.read();
+    if (high < 0 || low < 0) return null;
+    return Math.max(2, (high << 8) | low);
+  }
+
+  parseFrame(marker, payload) {
+    if (payload.length < 6) {
+      this.frame = null;
+      this.progressive = null;
+      this.allVerified = false;
+      return;
+    }
+    const precision = payload[0];
+    const height = (payload[1] << 8) | payload[2];
+    const width = (payload[3] << 8) | payload[4];
+    const count = payload[5];
+    if (count === 0 || payload.length < 6 + 3 * count) {
+      this.frame = null;
+      this.progressive = null;
+      this.allVerified = false;
+      return;
+    }
+    const components = Array.from({ length: count }, (_, index) => {
+      const sampling = payload[7 + index * 3];
+      return { id: payload[6 + index * 3], h: Math.max(1, sampling >> 4), v: Math.max(1, sampling & 15) };
+    });
+    const hMax = Math.max(...components.map((component) => component.h));
+    const vMax = Math.max(...components.map((component) => component.v));
+    const sequentialHuffman = marker !== 0xc2 && precision === 8 && height > 0 && width > 0;
+    const progressiveHuffman = marker === 0xc2 && precision === 8 && height > 0 && width > 0;
+    this.frame = {
+      precision, height, width, components, hMax, vMax, sequentialHuffman, progressiveHuffman,
+      mcuColumns: ceilDiv(width, 8 * hMax),
+      mcuRows: ceilDiv(height, 8 * vMax),
+    };
+    this.progressive = progressiveHuffman ? progressiveState(this.frame) : null;
+    if (progressiveHuffman && this.progressive === null) this.allVerified = false;
+    this.supplied.clear();
+  }
+
+  parseHuffman(payload) {
+    let offset = 0;
+    while (offset + 17 <= payload.length) {
+      const tableClass = payload[offset] >> 4;
+      const tableId = payload[offset] & 15;
+      const counts = payload.subarray(offset + 1, offset + 17);
+      const total = counts.reduce((sum, value) => sum + value, 0);
+      if (offset + 17 + total > payload.length || tableId > 3 || tableClass > 1) return;
+      const table = new HuffmanTable(counts, payload.slice(offset + 17, offset + 17 + total));
+      if (tableClass === 0) this.dcTables[tableId] = table;
+      else this.acTables[tableId] = table;
+      offset += 17 + total;
+    }
+  }
+
+  scan(header) {
+    this.bits.reset();
+    const frame = this.frame;
+    if (frame?.progressiveHuffman) {
+      if (this.progressive === null) {
+        this.allVerified = false;
+        this.bits.skipToMarker();
+        return this.bits.consumeMarker();
+      }
+      return this.scanProgressive(frame, this.progressive, header);
+    }
+    if (!frame?.sequentialHuffman || !this.verifiableScan(frame, header)) {
+      this.allVerified = false;
+      this.bits.skipToMarker();
+      return this.bits.consumeMarker();
+    }
+    const scanComponentCount = header[0];
+    const components = [];
+    for (let index = 0; index < scanComponentCount; index += 1) {
+      const id = header[1 + index * 2];
+      const selectors = header[2 + index * 2];
+      components.push({
+        component: frame.components.find((candidate) => candidate.id === id),
+        dc: this.dcTables[selectors >> 4],
+        ac: this.acTables[selectors & 15],
+      });
+    }
+    if (components.some((entry) => !entry.component || !entry.dc || !entry.ac)) {
+      this.allVerified = false;
+      this.bits.skipToMarker();
+      return this.bits.consumeMarker();
+    }
+    const mcuCount = this.geometry(frame, components.map((entry) => entry.component));
+    let sinceRestart = 0;
+    for (let mcu = 0; mcu < mcuCount; mcu += 1) {
+      if (this.restartInterval > 0 && sinceRestart === this.restartInterval) {
+        if (!this.bits.expectRestart()) return this.shortOrEof();
+        sinceRestart = 0;
+      }
+      for (const entry of components) {
+        const blocks = scanComponentCount > 1 ? entry.component.h * entry.component.v : 1;
+        for (let block = 0; block < blocks; block += 1) {
+          if (!this.decodeBlock(entry.dc, entry.ac)) return this.shortOrEof();
+        }
+      }
+      sinceRestart += 1;
+    }
+    for (const entry of components) this.supplied.add(entry.component.id);
+    this.bits.skipToMarker();
+    return this.bits.consumeMarker();
+  }
+
+  scanProgressive(frame, state, header) {
+    if (header.length === 0) return SHORT;
+    const scanComponentCount = header[0];
+    if (scanComponentCount < 1 || scanComponentCount > 4 || header.length < 1 + scanComponentCount * 2 + 3) return SHORT;
+    const ss = header[1 + scanComponentCount * 2];
+    const se = header[2 + scanComponentCount * 2];
+    const approximation = header[3 + scanComponentCount * 2];
+    const ah = approximation >> 4;
+    const al = approximation & 15;
+    const isDc = ss === 0 && se === 0;
+    if ((!isDc && (scanComponentCount !== 1 || ss < 1 || ss > 63 || se < ss || se > 63)) || (isDc && (ss !== 0 || se !== 0))) return SHORT;
+    if (ah !== 0 && ah !== al + 1) return SHORT;
+
+    const components = [];
+    for (let index = 0; index < scanComponentCount; index += 1) {
+      const id = header[1 + index * 2];
+      const selectors = header[2 + index * 2];
+      if ((selectors >> 4) > 3 || (selectors & 15) > 3) return SHORT;
+      const componentState = state.byId.get(id);
+      if (!componentState) return SHORT;
+      components.push({ state: componentState, dc: this.dcTables[selectors >> 4], ac: this.acTables[selectors & 15] });
+    }
+    for (const entry of components) {
+      for (let coefficient = ss; coefficient <= se; coefficient += 1) {
+        if (ah === 0 ? entry.state.coverage[coefficient] !== -1 : entry.state.coverage[coefficient] !== ah) return SHORT;
+      }
+    }
+    if (isDc && ah === 0 && components.some((entry) => !entry.dc)) return SHORT;
+    if (!isDc && components.some((entry) => !entry.ac)) return SHORT;
+
+    const mcuCount = this.geometry(frame, components.map((entry) => entry.state.component));
+    let sinceRestart = 0;
+    let expectedRestart = 0;
+    let eobRun = 0;
+    for (let mcu = 0; mcu < mcuCount; mcu += 1) {
+      if (this.restartInterval > 0 && sinceRestart === this.restartInterval) {
+        if (eobRun !== 0 || !this.bits.expectRestart(expectedRestart)) return this.shortOrEof();
+        expectedRestart = (expectedRestart + 1) & 7;
+        sinceRestart = 0;
+      }
+      for (const entry of components) {
+        const component = entry.state.component;
+        const blocks = scanComponentCount > 1 ? component.h * component.v : 1;
+        for (let block = 0; block < blocks; block += 1) {
+          const blockIndex = this.progressiveBlockIndex(frame, entry.state, scanComponentCount, mcu, block);
+          const mask = entry.state.nonzero[blockIndex];
+          let decoded;
+          if (isDc && ah === 0) decoded = this.decodeDcFirst(entry.dc, mask);
+          else if (isDc) decoded = this.decodeDcRefine(mask);
+          else if (ah === 0) decoded = this.decodeAcFirst(entry.ac, mask, ss, se, eobRun);
+          else decoded = this.decodeAcRefine(entry.ac, mask, ss, se, eobRun);
+          if (decoded === null) return this.shortOrEof();
+          entry.state.nonzero[blockIndex] = decoded.mask;
+          eobRun = decoded.eobRun;
+        }
+      }
+      sinceRestart += 1;
+    }
+    if (eobRun !== 0) return SHORT;
+    for (const entry of components) {
+      for (let coefficient = ss; coefficient <= se; coefficient += 1) entry.state.coverage[coefficient] = al;
+    }
+    this.bits.skipToMarker();
+    return this.bits.consumeMarker();
+  }
+
+  progressiveBlockIndex(frame, state, scanComponentCount, mcu, block) {
+    if (scanComponentCount === 1) return Math.floor(mcu / state.actualWidth) * state.paddedWidth + (mcu % state.actualWidth);
+    const mcuX = mcu % frame.mcuColumns;
+    const mcuY = Math.floor(mcu / frame.mcuColumns);
+    const blockX = block % state.component.h;
+    const blockY = Math.floor(block / state.component.h);
+    return (mcuY * state.component.v + blockY) * state.paddedWidth + mcuX * state.component.h + blockX;
+  }
+
+  decodeDcFirst(table, mask) {
+    const size = this.decodeSymbol(table);
+    if (size < 0 || size > 15 || !this.skipBits(size)) return null;
+    return { mask: size === 0 ? mask : mask | 1n, eobRun: 0 };
+  }
+
+  decodeDcRefine(mask) {
+    const bit = this.bits.bit();
+    return bit < 0 ? null : { mask: bit === 0 ? mask : mask | 1n, eobRun: 0 };
+  }
+
+  decodeAcFirst(table, initialMask, ss, se, initialEobRun) {
+    let mask = initialMask;
+    let eobRun = initialEobRun;
+    if (eobRun > 0) return { mask, eobRun: eobRun - 1 };
+    let coefficient = ss;
+    while (coefficient <= se) {
+      const rs = this.decodeSymbol(table);
+      if (rs < 0) return null;
+      const run = rs >> 4;
+      const size = rs & 15;
+      if (size === 0) {
+        if (run === 15) {
+          coefficient += 16;
+          if (coefficient > se + 1) return null;
+          continue;
+        }
+        const extra = this.readBits(run);
+        if (extra === null) return null;
+        eobRun = (1 << run) + extra - 1;
+        return { mask, eobRun };
+      }
+      if (size < 1 || size > 15) return null;
+      coefficient += run;
+      if (coefficient > se || this.readBits(size) === null) return null;
+      mask |= 1n << BigInt(coefficient);
+      coefficient += 1;
+    }
+    return { mask, eobRun };
+  }
+
+  decodeAcRefine(table, initialMask, ss, se, initialEobRun) {
+    let mask = initialMask;
+    let eobRun = initialEobRun;
+    let coefficient = ss;
+    if (eobRun === 0) {
+      while (coefficient <= se) {
+        const rs = this.decodeSymbol(table);
+        if (rs < 0) return null;
+        let run = rs >> 4;
+        const size = rs & 15;
+        let newCoefficient = false;
+        if (size === 0) {
+          if (run < 15) {
+            const extra = this.readBits(run);
+            if (extra === null) return null;
+            eobRun = (1 << run) + extra;
+            break;
+          }
+        } else {
+          if (size !== 1 || this.bits.bit() < 0) return null;
+          newCoefficient = true;
+        }
+        let reachedTargetZero = false;
+        while (coefficient <= se) {
+          if ((mask & (1n << BigInt(coefficient))) !== 0n) {
+            if (this.bits.bit() < 0) return null;
+          } else {
+            run -= 1;
+            if (run < 0) {
+              reachedTargetZero = true;
+              break;
+            }
+          }
+          coefficient += 1;
+        }
+        if (!reachedTargetZero) return null;
+        if (newCoefficient) mask |= 1n << BigInt(coefficient);
+        coefficient += 1;
+      }
+    }
+    if (eobRun > 0) {
+      while (coefficient <= se) {
+        if ((mask & (1n << BigInt(coefficient))) !== 0n && this.bits.bit() < 0) return null;
+        coefficient += 1;
+      }
+      eobRun -= 1;
+    }
+    return { mask, eobRun };
+  }
+
+  missingComponents() {
+    return Boolean(this.frame?.sequentialHuffman && this.allVerified
+      && this.frame.components.some((component) => !this.supplied.has(component.id)));
+  }
+
+  missingProgressiveCoverage() {
+    if (!this.frame?.progressiveHuffman || !this.allVerified || !this.progressive) return false;
+    return [...this.progressive.byId.values()].some((entry) => entry.coverage.some((value) => value !== 0));
+  }
+
+  verifiableScan(frame, header) {
+    if (header.length === 0) return false;
+    const count = header[0];
+    if (count < 1 || count > 4 || header.length < 1 + count * 2 + 3) return false;
+    if (header[1 + count * 2] !== 0 || header[2 + count * 2] !== 63 || header[3 + count * 2] !== 0) return false;
+    for (let index = 0; index < count; index += 1) {
+      if (!frame.components.some((component) => component.id === header[1 + index * 2])) return false;
+    }
+    return true;
+  }
+
+  geometry(frame, scanComponents) {
+    if (scanComponents.length === 1) {
+      const component = scanComponents[0];
+      const width = ceilDiv(frame.width * component.h, frame.hMax);
+      const height = ceilDiv(frame.height * component.v, frame.vMax);
+      return ceilDiv(width, 8) * ceilDiv(height, 8);
+    }
+    return ceilDiv(frame.width, 8 * frame.hMax) * ceilDiv(frame.height, 8 * frame.vMax);
+  }
+
+  decodeBlock(dc, ac) {
+    const dcSize = this.decodeSymbol(dc);
+    if (dcSize < 0 || (dcSize > 0 && !this.skipBits(dcSize))) return false;
+    let coefficient = 1;
+    while (coefficient < 64) {
+      const rs = this.decodeSymbol(ac);
+      if (rs < 0) return false;
+      const run = rs >> 4;
+      const size = rs & 15;
+      if (size !== 0) {
+        coefficient += run;
+        if (!this.skipBits(size)) return false;
+        coefficient += 1;
+      } else {
+        if (run !== 15) break;
+        coefficient += 16;
+      }
+    }
+    return true;
+  }
+
+  decodeSymbol(table) {
+    let code = this.bits.bit();
+    if (code < 0) return EOF;
+    let length = 1;
+    while (code > table.maxCode[length]) {
+      length += 1;
+      if (length > 16) return EOF;
+      const bit = this.bits.bit();
+      if (bit < 0) return EOF;
+      code = (code << 1) | bit;
+    }
+    const index = table.valuePointer[length] + code - table.minCode[length];
+    return index >= 0 && index < table.symbols.length ? table.symbols[index] : EOF;
+  }
+
+  readBits(count) {
+    let value = 0;
+    for (let index = 0; index < count; index += 1) {
+      const bit = this.bits.bit();
+      if (bit < 0) return null;
+      value = (value << 1) | bit;
+    }
+    return value;
+  }
+
+  skipBits(count) {
+    for (let index = 0; index < count; index += 1) if (this.bits.bit() < 0) return false;
+    return true;
+  }
+
+  shortOrEof() {
+    return this.bits.marker === EOF ? EOF : SHORT;
+  }
+}
+
+export function assessJpegCompleteness(bytes) {
+  return new Walker(bytes).run();
+}
+
+export function judgeJpegCompleteness(bytes) {
+  const assessment = assessJpegCompleteness(bytes);
+  return {
+    ...assessment,
+    state: assessment.result === JPEG_COMPLETENESS.COMPLETE && !assessment.entropyVerified
+      ? JPEG_COMPLETENESS.UNDETERMINED
+      : assessment.result,
+  };
+}
