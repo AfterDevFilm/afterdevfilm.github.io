@@ -7,14 +7,17 @@
 :root{color-scheme:light;--paper:#f7f8f5;--surface:#fff;--ink:#29342d;--ink-muted:#535e56;--accent:#526b56;--accent-pressed:#435a47;--line:#e2e7e1;--mist:#e8ece7;font-family:-apple-system,"Noto Sans KR",system-ui,sans-serif}
 *{box-sizing:border-box}
 html,body{max-width:100%}
-body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;-webkit-text-size-adjust:100%;word-break:keep-all;overflow-wrap:anywhere}
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;-webkit-text-size-adjust:100%;word-break:keep-all;overflow-wrap:break-word}
 main{max-width:720px;margin:0 auto;padding:0 20px 24px}
 .hero{text-align:center;padding:56px 0 32px}
 .hero img{width:144px;height:144px;border-radius:32px;box-shadow:0 1px 2px rgba(41,52,45,.12),0 8px 24px rgba(41,52,45,.10)}
 h1{margin:24px 0 4px;font-size:34px;line-height:1.25;letter-spacing:-.01em}
 .en-name{margin:0;color:var(--ink-muted);font-size:15px;letter-spacing:.06em}
-.tagline{margin:28px 0 0;font-size:22px;line-height:1.5;font-weight:700}
+.tagline{margin:28px 0 0;font-size:22px;line-height:1.5;font-weight:700;text-wrap:balance}
 .lede{margin:16px auto 0;max-width:34em;color:var(--ink-muted)}
+.lede span{display:block}
+.lede span+span{margin-top:.35em}
+.lede,.card p,.status{text-wrap:pretty}
 .cta{margin:32px 0 0}
 .btn{display:inline-block;min-height:48px;padding:12px 28px;border-radius:12px;background:var(--accent);color:#fff;font-weight:700;font-size:17px;text-decoration:none}
 .btn:hover,.btn:focus-visible{background:var(--accent-pressed)}
@@ -22,12 +25,12 @@ h1{margin:24px 0 4px;font-size:34px;line-height:1.25;letter-spacing:-.01em}
 .status{margin:14px 0 0;color:var(--ink-muted);font-size:15px}
 .features{display:grid;gap:16px;margin:40px 0 0}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
-.card h2{margin:0 0 8px;font-size:18px;line-height:1.4}
+.card h2{margin:0 0 8px;font-size:18px;line-height:1.4;text-wrap:balance}
 .card p{margin:0;color:var(--ink-muted)}
 footer{max-width:720px;margin:24px auto 0;padding:24px 20px 48px;border-top:1px solid var(--line);text-align:center;font-size:14px;color:#68736b}
 footer a{color:var(--accent);font-weight:700}
 footer p{margin:6px 0}
-@media (min-width:640px){.features{grid-template-columns:1fr 1fr}.hero{padding-top:72px}h1{font-size:40px}}
+@media (min-width:640px){.features{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{padding-top:72px}h1{font-size:40px}}
 </style></head>
 <body>
 <main>
@@ -36,7 +39,8 @@ footer p{margin:6px 0}
 <h1>현상후</h1>
 <p class="en-name">AfterDev</p>
 <p class="tagline">현상은 끝났어요.<br>간직하고, 보여 줄 차례예요.</p>
-<p class="lede">현상소에서 받은 필름 스캔을 정리하는 앱이에요. 한 롤을 통째로 가져오거나 사진 한 장만 골라, 촬영 정보와 함께 저장하고 공유할 수 있어요.</p>
+<p class="lede"><span>현상소에서 받은 필름 스캔을 정리하는 앱이에요.</span>
+<span>한 롤을 통째로 가져오거나 사진 한 장만 골라, 촬영 정보와 함께 저장하고 공유할 수 있어요.</span></p>
 <p class="cta"><a class="btn" href="./try/">웹에서 써 보기</a></p>
 <p class="status">안드로이드는 비공개 테스트 중이고, iOS는 출시 예정이에요.</p>
 </header>
