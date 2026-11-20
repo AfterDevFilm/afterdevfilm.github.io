@@ -1,9 +1,60 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AfterDev - 현상후</title>
-<style>body{font-family:-apple-system,"Noto Sans KR",sans-serif;max-width:640px;margin:48px auto;padding:0 16px;color:#1e1e1e;line-height:1.6}h1{font-size:28px}p{color:#373737}</style></head>
-<body><h1>AfterDev - 현상후</h1>
-<p>현상소에서 받은 필름 스캔을 롤 단위로 정리하고, 촬영 정보 프레임을 붙여 내보내는 무료 앱입니다.</p>
-<p>A free app that organizes lab film scans by roll and exports them with a shooting-information frame.</p>
-<p>준비 중입니다. / Coming soon.</p><p><a href="./try/" style="color:#526b56;font-weight:700">브라우저에서 먼저 써 보기</a></p><p>베타 테스트 신청 안내와 동의서는 준비되면 여기에 올려 둘게요.</p><p style="margin-top:40px;font-size:12px;color:#6b6f6a">© 2026 AfterDev. All rights reserved.</p>
+<meta name="description" content="현상소에서 받은 필름 스캔을 롤 단위로 정리하고, 촬영 정보 프레임을 붙여 내보내는 앱, 현상후(AfterDev).">
+<link rel="icon" href="assets/icon-384.png" type="image/png">
+<style>
+:root{color-scheme:light;--paper:#f7f8f5;--surface:#fff;--ink:#29342d;--ink-muted:#535e56;--accent:#526b56;--accent-pressed:#435a47;--line:#e2e7e1;--mist:#e8ece7;font-family:-apple-system,"Noto Sans KR",system-ui,sans-serif}
+*{box-sizing:border-box}
+html,body{max-width:100%}
+body{margin:0;background:var(--paper);color:var(--ink);line-height:1.65;-webkit-text-size-adjust:100%;word-break:keep-all;overflow-wrap:anywhere}
+main{max-width:720px;margin:0 auto;padding:0 20px 24px}
+.hero{text-align:center;padding:56px 0 32px}
+.hero img{width:144px;height:144px;border-radius:32px;box-shadow:0 1px 2px rgba(41,52,45,.12),0 8px 24px rgba(41,52,45,.10)}
+h1{margin:24px 0 4px;font-size:34px;line-height:1.25;letter-spacing:-.01em}
+.en-name{margin:0;color:var(--ink-muted);font-size:15px;letter-spacing:.06em}
+.tagline{margin:28px 0 0;font-size:22px;line-height:1.5;font-weight:700}
+.lede{margin:16px auto 0;max-width:34em;color:var(--ink-muted)}
+.cta{margin:32px 0 0}
+.btn{display:inline-block;min-height:48px;padding:12px 28px;border-radius:12px;background:var(--accent);color:#fff;font-weight:700;font-size:17px;text-decoration:none}
+.btn:hover,.btn:focus-visible{background:var(--accent-pressed)}
+.btn:focus-visible,a:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.status{margin:14px 0 0;color:var(--ink-muted);font-size:15px}
+.features{display:grid;gap:16px;margin:40px 0 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+.card h2{margin:0 0 8px;font-size:18px;line-height:1.4}
+.card p{margin:0;color:var(--ink-muted)}
+.notes{margin:32px 0 0;text-align:center;color:var(--ink-muted);font-size:15px}
+.notes p{margin:6px 0}
+.notes .en{font-size:14px}
+footer{max-width:720px;margin:24px auto 0;padding:24px 20px 48px;border-top:1px solid var(--line);text-align:center;font-size:14px;color:#68736b}
+footer a{color:var(--accent);font-weight:700}
+footer p{margin:6px 0}
+@media (min-width:640px){.features{grid-template-columns:1fr 1fr}.hero{padding-top:72px}h1{font-size:40px}}
+</style></head>
+<body>
+<main>
+<header class="hero">
+<img src="assets/icon-384.png" width="144" height="144" alt="현상후 앱 아이콘">
+<h1>현상후</h1>
+<p class="en-name">AfterDev</p>
+<p class="tagline">현상은 끝났어요.<br>간직하고, 보여 줄 차례예요.</p>
+<p class="lede">현상소에서 받은 사진, 이제 휴대폰 사진첩에서 편하게 꺼내 보세요. 현상후(AfterDev)는 필름 사진을 정리하고, 저장하고, 공유하는 앱이에요. 한 롤을 통째로 정리해도 되고, SNS에 올리고 싶은 한 컷은 '사진 한 장 가져오기'로 사진첩이나 파일에서 바로 불러올 수도 있어요. 남겨 둔 촬영 정보가 있다면 사진과 함께 담을 수도 있어요.</p>
+<p class="cta"><a class="btn" href="./try/">브라우저에서 먼저 써 보기</a></p>
+<p class="status">Android는 비공개 테스트 중이고, iOS는 공개 예정입니다.<br>Android: closed testing · iOS: coming soon.</p>
+</header>
+<section class="features" aria-label="현상후로 할 수 있는 일">
+<article class="card"><h2>스캔 받은 필름 사진을 정리해요</h2><p>현상소에서 받은 ZIP 파일을 가져오세요. 컷 번호와 순서를 정리하고, 방향이 맞지 않는 사진은 회전하거나 뒤집을 수 있어요.</p></article>
+<article class="card"><h2>저장하고, 보여 주세요</h2><p>정리한 사진을 사진첩에 저장하거나 다른 앱으로 공유하세요. JPEG, PNG, WebP로 저장할 수 있어요. 한 롤을 한눈에 보고 싶을 때는 여러 사진을 한 장에 모아 볼 수도 있어요.</p></article>
+<article class="card"><h2>촬영 정보도 함께 남겨요</h2><p>카메라, 렌즈, 필름과 노출 정보를 사진 아래 프레임에 담아 보세요. 한 롤에 공통으로 쓰는 정보는 한 번만 입력하고, 달라진 컷만 따로 바꿀 수 있어요. 사진만 원한다면 프레임 없이 내보내면 돼요.</p></article>
+<article class="card"><h2>사진은 내 기기에서 처리해요</h2><p>회원가입 없이 사용할 수 있고, 가져온 사진과 기록은 기기 안에서 처리해요. 사진을 개발자 서버로 자동 전송하지 않아요.</p></article>
+</section>
+<div class="notes">
+<p class="en">An app that organizes lab film scans by roll and exports them with a shooting-information frame.</p>
+</div>
+</main>
+<footer>
+<p><a href="./privacy/">개인정보 처리방침</a></p>
+<p>© 2026 AfterDev. All rights reserved.</p>
+</footer>
 </body></html>
