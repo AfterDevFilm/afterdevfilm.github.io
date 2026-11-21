@@ -34,6 +34,8 @@
             <small id="zip-limit-note">체험판은 256MB·사진 200장까지 받아요</small>
             <small id="example-availability-note">ZIP이 없으면 아래 예시로 해 볼 수 있어요</small>
           </label>
+          <button id="single-photo-button" class="secondary single-photo-entry" type="button">사진 한 장 가져오기</button>
+          <input id="single-photo-input" type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" hidden>
           <input id="zip-input" type="file" accept=".zip,application/zip" hidden>
         </div>
       </section>
@@ -351,7 +353,12 @@
             <button type="button" data-quality="lossless" hidden>무손실</button>
           </div>
         </div>
-        <div class="segmented-row">
+        <div id="single-photo-name-row" class="single-photo-name-field" hidden>
+          <label for="single-photo-name">파일 이름</label>
+          <input id="single-photo-name" type="text" placeholder="파일 이름을 써야 내보낼 수 있어요" aria-describedby="single-photo-name-error" autocomplete="off">
+          <p id="single-photo-name-error" class="single-photo-name-error" role="status" hidden></p>
+        </div>
+        <div id="digits-row" class="segmented-row">
           <span class="setting-label">번호 자릿수</span>
           <div id="digits-toggle" class="segmented three" aria-label="번호 자릿수">
             <button type="button" data-digits="1">1자리</button>
@@ -373,10 +380,15 @@
         <p class="web-save-location">웹: 내려받기 또는 공유 창으로 저장해요.</p>
         <p id="export-blocker" class="export-blocker">사진만·간단히·자세히 중에서 하나를 골라 주세요.</p>
         <button id="export-button" class="primary" type="button" disabled>전체 0장 내보내기</button>
+        <div id="single-photo-actions" class="single-photo-actions" hidden>
+          <button id="single-photo-share" class="secondary" type="button">공유하기</button>
+          <button id="single-photo-save" class="primary" type="button">저장하기</button>
+        </div>
       </footer>
     </section>
 
     <section id="result-screen" class="screen" data-screen="result" hidden>
+      <button id="single-photo-result-back" class="back-button" type="button" aria-label="이전 화면" hidden>‹</button>
       <div class="result-heading">
         <span class="success-mark" aria-hidden="true">✓</span>
         <h1 id="result-title">사진 0장을 내려받았어요.</h1>
@@ -412,6 +424,21 @@
     <input id="roll-name" value="film001" hidden>
     <button id="bulk-result" class="bulk-result" type="button" role="status" aria-label="결과 알림 닫기" hidden></button>
   </main>
+
+  <div id="single-photo-name-layer" class="dialog-layer" hidden>
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="single-photo-name-title">
+      <h2 id="single-photo-name-title">이름을 입력해 주세요.</h2>
+      <div class="single-photo-name-field">
+        <label for="single-photo-name-draft">파일 이름</label>
+        <input id="single-photo-name-draft" type="text" placeholder="파일 이름을 써야 내보낼 수 있어요" aria-describedby="single-photo-name-dialog-error" autocomplete="off">
+        <p id="single-photo-name-dialog-error" class="single-photo-name-error" role="status" hidden></p>
+      </div>
+      <div class="dialog-actions">
+        <button id="single-photo-name-cancel" class="dialog-safe" type="button">취소</button>
+        <button id="single-photo-name-confirm" class="dialog-confirm" type="button">저장하기</button>
+      </div>
+    </section>
+  </div>
 
   <div id="record-zero-cut-layer" class="dialog-layer" hidden>
     <section class="dialog record-zero-cut-dialog" role="dialog" aria-modal="true" aria-labelledby="record-zero-cut-title">

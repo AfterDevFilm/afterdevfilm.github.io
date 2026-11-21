@@ -1462,3 +1462,24 @@ label:has(input:focus-visible) > span {
 .record-zero-cut-dialog .dialog-confirm:disabled { background: var(--line); color: var(--ink-disabled); cursor: default; }
 .record-zero-cut .record-zero-cut-result p { color: var(--ink); }
 .number-unit { white-space: nowrap; }
+
+/* Single Photo only: existing Roll controls and their geometry stay intact. */
+.single-photo-entry { margin-top: 14px; }
+.single-photo-name-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#single-photo-name-row { margin-top: 24px; }
+.single-photo-name-field label { color: var(--ink-muted); }
+.single-photo-name-field input {
+  width: 100%; min-width: 0; min-height: 56px; padding: 12px 16px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface); color: var(--ink);
+}
+.single-photo-name-field input::placeholder { color: var(--ink-hint); opacity: 1; }
+.single-photo-name-field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.single-photo-name-field input[aria-invalid="true"] { border-color: var(--warn); }
+.single-photo-name-field .single-photo-name-error { margin: 0; color: var(--warn); font-size: 0.875rem; line-height: 1.25rem; }
+#single-photo-name-layer .dialog-actions { margin-top: 24px; }
+.single-photo-actions { display: flex; flex-wrap: wrap; gap: 14px; }
+.single-photo-actions > button { flex: 1 0 calc((100% - 14px) / 2); min-width: max-content; width: auto; white-space: nowrap; }
+#export-screen.single-photo .web-save-location { margin-bottom: 14px; }
+#export-screen.single-photo .export-blocker { margin-bottom: 14px; }
+#export-screen.single-photo .export-bottom-spacer { height: 256px; }

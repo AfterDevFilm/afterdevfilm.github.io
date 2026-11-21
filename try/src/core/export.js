@@ -139,6 +139,7 @@ async function canvasBytes(canvas, type, quality, lossless) {
 export async function exportConfiguredZip(items, {
   rollName = "roll", mode = "off", format = "jpeg", quality = 0.85, lossless = false, width = 2,
   includeCut = false, rollFrameLabel = false, rgbHistogram = false, paddingRatio = "original",
+  singleFilename = null,
 } = {}) {
   try {
     const type = { jpeg: "image/jpeg", webp: "image/webp", png: "image/png" }[format];
@@ -152,13 +153,20 @@ export async function exportConfiguredZip(items, {
       const frameAllowed = mode === "off" || evaluateInformationFramePhotoLimit(item).allowed;
       const actualMode = frameAllowed ? mode : "off";
       if (!frameAllowed) photoOnlyFrames.push(item.frame);
+      let singleNameResult;
+      if (singleFilename) singleNameResult = { result: "name", name: singleFilename };
+      else {
       const nameResult = makeExportFilename({
         roll: rollName, frame: item.frame, width, includeCut, cut: item.cutName || null,
         mode: actualMode, ext: extension,
       });
       if (nameResult.result !== "name") throw new Error("내보낼 파일 이름을 만들지 못했어요.");
 
+      singleNameResult = nameResult;
+      }
+
       let bytes;
+      const nameResult = singleNameResult;
       let outputName = nameResult.name;
       let shown = correctedPhotoDimensions(item.width, item.height, item.correction);
       const correction = normalizePhotoCorrection(item.correction);
@@ -182,7 +190,9 @@ export async function exportConfiguredZip(items, {
             const blockHeight = canvas.height;
             canvas = applyPaddingRatioCanvas(canvas, paddingRatio, rendered.geometry.photoY, rendered.geometry.photoHeight);
             if (!made.includes(canvas)) made.push(canvas);
+            if (!singleFilename) {
             outputName = applyPaddingRatioFilename(outputName, paddingRatio, blockWidth, blockHeight);
+            }
           }
           shown = { width: canvas.width, height: canvas.height };
           bytes = await canvasBytes(canvas, type, quality, lossless);

@@ -66,6 +66,15 @@ export function checkRollName(raw) {
   return { result: "valid", value };
 }
 
+export function checkSinglePhotoName(raw) {
+  const value = trimName(raw);
+  if (!value) return { result: "invalid", reason: "empty" };
+  const offendingCodePoint = deniedCodePoint(value);
+  if (offendingCodePoint !== null) return { result: "invalid", reason: "denied_character", offendingCodePoint };
+  if (value.startsWith(".")) return { result: "invalid", reason: "leading_dot" };
+  return { result: "valid", value };
+}
+
 export function checkCutName(raw) {
   if (raw == null) return { result: "valid", value: null };
   const value = trimName(raw);

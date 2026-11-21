@@ -14,6 +14,8 @@ import {
 } from "./core/export-rules.js";
 import { evaluateInformationFramePhotoLimit, renderInformationFrame, showsRGBHistogramControl } from "./core/information-frame.js";
 import { defaultRollName } from "./core/default-roll-name.js";
+import { SINGLE_PHOTO_COPY, singlePhotoExportState, chooseSinglePhotoAction, checkNameDialogInput } from "./core/single-photo-flow.js";
+import { makeSinglePhotoFilename } from "./core/single-photo.js";
 import { newZipRollState } from "./core/new-zip-roll-state.js";
 import { resolveCutField, resolveCutRecord } from "./core/roll-values.js";
 import { groupShareFiles, makeShareFiles } from "./core/share.js";
@@ -95,6 +97,7 @@ function framePositionsProblem(positions) {
 }
 
 const state = {
+  singlePhoto: null,
   photos: [], importFailures: [], records: [], cutValues: [], roll: {}, items: [], mode: null,
   screen: "start", returnScreen: "roll", presentation: "grid", columns: 3,
   currentCut: 0, previewToken: 0, thumbnailToken: 0, shareSession: null,
@@ -140,6 +143,10 @@ const appPreviews = {
 
 const byId = (id) => document.getElementById(id);
 const zipInput = byId("zip-input");
+const singlePhotoInput = byId("single-photo-input");
+const initialStartStatus = byId("status").textContent;
+let singlePhotoNameAction = null;
+let singlePhotoNameOpener = null;
 const recordInput = byId("record-input");
 const replaceScanInput = byId("replace-scan-input");
 const dropZone = byId("drop-zone");
@@ -323,6 +330,7 @@ async function renderPhoto(container, item, maximum, token, label) {
     container.replaceChildren(canvas);
     container.dataset.thumbnailState = "ready";
   } catch {
+    if (token !== state.thumbnailToken || thumbnailRenderVersions.get(container) !== version) return;
     container.textContent = "미리보기 없음";
     container.dataset.thumbnailState = "failed";
   }
@@ -510,15 +518,20 @@ function renderCut() {
   const item = state.items[state.currentCut];
   if (!item) return;
   const token = ++state.thumbnailToken;
-  byId("cut-position").textContent = `${String(state.currentCut + 1).padStart(2, "0")} / ${String(state.items.length).padStart(2, "0")}`;
+  byId("cut-position").textContent = state.singlePhoto ? SINGLE_PHOTO_COPY["TXT-UI-0386"] : `${String(state.currentCut + 1).padStart(2, "0")} / ${String(state.items.length).padStart(2, "0")}`;
   byId("cut-roll-name").textContent = rollNameInput.value.trim() || defaultRollName();
+  byId("cut-roll-name").hidden = Boolean(state.singlePhoto);
+  document.querySelector("#cut-screen .menu-button").hidden = Boolean(state.singlePhoto);
+  byId("replace-scan-button").hidden = Boolean(state.singlePhoto);
+  document.querySelector("#cut-screen .cut-step-row").hidden = Boolean(state.singlePhoto);
+  byId("cut-back").setAttribute("aria-label", state.singlePhoto ? "이전 화면" : "롤로 돌아가기");
   renderPhoto(byId("cut-photo"), item, 720, token, `${item.frame}번 컷 큰 사진`);
 
   const meta = cutMeta(item);
   const cutInfoCard = byId("cut-info-card");
   cutInfoCard.replaceChildren(
     makeInfoRow({ label: "컷 이름", value: meta.name, source: meta.nameSource, emptyText: "—", action: meta.name ? "바꾸기" : "추가", onClick: () => openMetaEditor("name", "컷 이름") }),
-    makeInfoRow({ label: "컷 번호", value: String(item.frame), action: "바꾸기", onClick: () => openMetaEditor("frame", "컷 번호") }),
+    ...(state.singlePhoto ? [] : [makeInfoRow({ label: "컷 번호", value: String(item.frame), action: "바꾸기", onClick: () => openMetaEditor("frame", "컷 번호") })]),
     makeInfoRow({ label: "촬영일", value: meta.date, source: meta.dateSource, emptyText: "—", action: meta.date ? "바꾸기" : "추가", onClick: () => openMetaEditor("date", "촬영일") }),
   );
 
@@ -528,19 +541,20 @@ function renderCut() {
       ? [makeInfoRow({ label: "원본 상태", value: SCAN_UNREADABLE_MESSAGE })]
       : []),
   );
-  byId("roll-info-hint").hidden = !rollIsEmpty();
+  byId("roll-info-hint").hidden = Boolean(state.singlePhoto) || !rollIsEmpty();
   const shootingCard = byId("shooting-info-card");
   shootingCard.replaceChildren();
   for (const field of shootingFields) {
+    if (state.singlePhoto && field.key === "rollNumber") continue;
     const presentation = resolveCutField(state.roll, item.importedRecord, cutValues(item), field.key);
     shootingCard.append(makeInfoRow({
       label: field.label,
       value: presentation.value,
       emptyText: "—",
-      source: presentation.source,
+      source: state.singlePhoto ? "" : presentation.source,
       action: presentation.value ? "바꾸기" : "추가",
       onClick: () => openFieldEditor("cut", field),
-      onRevert: presentation.hasCutValue ? () => {
+      onRevert: !state.singlePhoto && presentation.hasCutValue ? () => {
         delete ensureCutValues(item)[field.key];
         invalidateShareSession();
         renderCut();
@@ -731,7 +745,7 @@ function renderFieldEditor() {
     choices.append(button);
   }
   choices.hidden = choices.childElementCount === 0;
-  byId("field-revert").hidden = !(editing.scope === "cut" && editing.hasCutValue);
+  byId("field-revert").hidden = Boolean(state.singlePhoto) || !(editing.scope === "cut" && editing.hasCutValue);
   renderRecentValues();
   updateFieldMessage();
   requestAnimationFrame(() => input.focus());
@@ -1153,7 +1167,7 @@ function currentExportItems() {
 
 function updateExportControls() {
   for (const input of document.querySelectorAll('input[name="frame-mode"]')) input.checked = input.value === state.mode;
-  byId("roll-frame-row").hidden = state.mode === null || state.mode === "off";
+  byId("roll-frame-row").hidden = Boolean(state.singlePhoto) || state.mode === null || state.mode === "off";
   byId("rgb-histogram-row").hidden = !showsRGBHistogramControl(state.mode);
   byId("ratio-row").hidden = state.mode === null || state.mode === "off";
   byId("roll-frame-label").checked = state.rollFrameLabel;
@@ -1180,6 +1194,29 @@ function updateExportControls() {
   byId("export-blocker").textContent = blocker;
   exportButton.disabled = state.mode === null || chosen === 0;
   exportButton.textContent = `전체 ${chosen}장 내보내기`;
+  const single = Boolean(state.singlePhoto);
+  exportButton.hidden = single;
+  byId("single-photo-actions").hidden = !single;
+  byId("single-photo-name-row").hidden = !single;
+  document.querySelector(".export-cuts").hidden = single;
+  byId("digits-row").hidden = single;
+  byId("export-screen").classList.toggle("single-photo", single);
+  byId("export-back").setAttribute("aria-label", single ? "이전 화면" : "롤로 돌아가기");
+  if (single) {
+    const policy = singlePhotoExportState({ name: state.singlePhoto.name, mode: state.mode, ext: singlePhotoExtension() });
+    byId("single-photo-name").value = state.singlePhoto.name;
+    showSinglePhotoNameError("single-photo-name", "single-photo-name-error", policy.nameError);
+    byId("export-blocker").textContent = state.mode === null ? policy.blockerLine
+      : chosen === 0 ? SINGLE_PHOTO_COPY["TXT-UI-0508"] : blocked ? SCAN_UNREADABLE_MESSAGE : policy.blockerLine;
+    for (const action of ["share", "save"]) {
+      const button = byId(`single-photo-${action}`);
+      button.disabled = Boolean(state.singlePhoto.running) || !policy.buttonsEnabled || chosen === 0 || blocked;
+      const reason = policy.nameError ? "single-photo-name-error" : "export-blocker";
+      if (button.disabled && !state.singlePhoto.running) button.setAttribute("aria-describedby", reason);
+      else button.removeAttribute("aria-describedby");
+    }
+    byId("export-back").disabled = Boolean(state.singlePhoto.running);
+  } else byId("export-back").disabled = false;
 }
 
 function renderExportCuts() {
@@ -1221,6 +1258,7 @@ async function probeWebpSupport() {
 function openExport(selectedCutIds = null) {
   state.returnScreen = state.screen === "cut" ? "cut" : "roll";
   refreshItems();
+  if (!state.singlePhoto?.exportOpened) {
   state.mode = null;
   state.exportFormat = "jpeg";
   state.exportQuality = "high";
@@ -1228,12 +1266,14 @@ function openExport(selectedCutIds = null) {
   state.rollFrameLabel = false;
   state.rgbHistogram = false;
   state.paddingRatio = "original";
+  }
+  if (state.singlePhoto) state.singlePhoto.exportOpened = true;
   state.exportSelection = new Set(state.returnScreen === "cut" ? [state.items[state.currentCut].frame]
     : selectedCutIds ? state.items.filter((item) => selectedCutIds.has(item.cutId)).map((item) => item.frame)
       : state.items.map((item) => item.frame));
   exportStatus.textContent = "";
   setExportReasons();
-  renderExportCuts();
+  if (state.singlePhoto) updateExportControls(); else renderExportCuts();
   renderPreview();
   showScreen("export");
   probeWebpSupport();
@@ -1515,29 +1555,67 @@ async function openContactSheet() {
   await renderContact();
 }
 
+// Shared reset for a newly accepted input and for finishing the one-photo flow.
+// newZipRollState deliberately preserves recent values; never replace state.recent.
+function resetPhotoFlow() {
+  state.thumbnailToken++;
+  state.previewToken++;
+  thumbnailCache.clear();
+  releaseResult(state.result);
+  invalidateShareSession();
+  const { rollName, ...resetState } = newZipRollState(state);
+  Object.assign(state, resetState, {
+    photos: [], items: [], result: null, singlePhoto: null, exportSelection: new Set(),
+    cutOrder: [], frameByCut: {}, cutValues: [], cutMeta: {}, orientation: {}, importFailures: [],
+    exampleActive: false, exampleRecordBytes: null, bulkEditing: false, bulkSelection: new Set(), rollAskPending: false,
+    editing: null, currentCut: 0,
+  });
+  rollNameInput.value = rollName;
+  byId("record-name").textContent = emptyRecordName;
+  byId("record-name").classList.remove("error-text");
+  closeSinglePhotoNameDialog();
+  for (const id of ["cut-photo", "export-cut-list", "result-file-list", "cut-list", "cut-info-card", "scan-info-card", "shooting-info-card", "cut-memo-card"]) {
+    const container = byId(id);
+    for (const canvas of container.querySelectorAll("canvas")) releaseCanvas(canvas);
+    container.replaceChildren();
+  }
+  releaseCanvas(previewCanvas);
+  previewCanvas.hidden = true;
+  byId("single-photo-name").value = "";
+  byId("field-input").value = "";
+  byId("cut-roll-name").textContent = "";
+  singlePhotoInput.value = "";
+}
+
+function finishSinglePhoto() {
+  resetPhotoFlow();
+  setStatus(initialStartStatus, false, startStatus);
+  showScreen("start");
+}
+
+async function receiveSinglePhoto(file) {
+  if (!file) return;
+  try {
+    const staged = await stageScanReplacement(file);
+    if (staged.status !== "prepared" || !["jpeg", "png"].includes(staged.photo.format)) throw new Error(SCAN_REPLACEMENT_READ_FAILURE);
+    resetPhotoFlow();
+    state.photos = [staged.photo];
+    state.singlePhoto = { name: "" };
+    openCut(0);
+  } catch {
+    setStatus(SCAN_REPLACEMENT_READ_FAILURE, true, startStatus);
+    showScreen("start");
+  }
+}
+
 async function receiveZip(file, { askRollInfo = true } = {}) {
   try {
     setStatus("ZIP을 읽고 있어요.", false, startStatus);
     const photos = await readPhotoZipBlob(file);
-    thumbnailCache.clear();
-    const { rollName, ...resetState } = newZipRollState(state);
-    Object.assign(state, resetState);
-    rollNameInput.value = rollName;
-    byId("record-name").textContent = emptyRecordName;
-    byId("record-name").classList.remove("error-text");
+    resetPhotoFlow();
     state.photos = photos;
     state.importFailures = photos.failures ?? [];
-    state.exampleActive = false;
-    state.exampleRecordBytes = null;
-    state.cutOrder = [];
-    state.frameByCut = {};
-    state.cutValues = [];
-    state.cutMeta = {};
-    state.orientation = {};
-    state.bulkEditing = false;
-    state.bulkSelection = new Set();
     state.rollAskPending = askRollInfo;
-    invalidateShareSession();
     renderRoll();
     showScreen("roll");
     if (state.rollAskPending && photos.length > 0 && rollIsEmpty()) {
@@ -1914,11 +1992,12 @@ async function receiveRecord(file) {
   }
 }
 
-async function buildOutput() {
+async function buildOutput(singleFilename = null) {
   const rollName = rollNameInput.value || defaultRollName();
   const quality = { high: 0.85, balanced: 0.75, small: 0.65 }[state.exportQuality] ?? 0.85;
   return exportConfiguredZip(currentExportItems(), {
     rollName, mode: state.mode, format: state.exportFormat, quality, lossless: state.exportQuality === "lossless",
+    ...(singleFilename ? { singleFilename } : {}),
     width: state.exportDigits, rollFrameLabel: state.rollFrameLabel,
     rgbHistogram: state.mode === "off" ? false : state.rgbHistogram,
     paddingRatio: state.mode === "off" ? "original" : state.paddingRatio,
@@ -1977,8 +2056,10 @@ function renderResult() {
   const result = state.result;
   byId("result-title").textContent = `사진 ${result.files.length}장을 내려받았어요.`;
   // Measured time only for the user's own ZIP; a built-in example says nothing about their device.
-  byId("export-elapsed").hidden = state.exampleActive;
+  byId("export-elapsed").hidden = state.exampleActive || Boolean(state.singlePhoto);
   byId("export-elapsed").textContent = state.exampleActive ? "" : `롤 전체 내보내기 · ${(result.elapsedMs / 1000).toFixed(2)}초`;
+  document.querySelector("#result-screen .app-capability-row").hidden = Boolean(state.singlePhoto);
+  byId("single-photo-result-back").hidden = !state.singlePhoto;
   const chosen = result.files.filter((file) => file.selected).length;
   byId("result-files-title").textContent = `공유할 파일 · ${chosen}개 선택`;
   byId("toggle-all-results").textContent = chosen === result.files.length ? "전체 해제" : "전체 선택";
@@ -2007,6 +2088,12 @@ function renderResult() {
   shareProgress.hidden = true;
   updateShareAvailability();
 }
+
+byId("single-photo-button").addEventListener("click", () => singlePhotoInput.click());
+singlePhotoInput.addEventListener("change", async () => {
+  try { await receiveSinglePhoto(singlePhotoInput.files[0] ?? null); }
+  finally { singlePhotoInput.value = ""; }
+});
 
 zipInput.addEventListener("change", async () => {
   const file = zipInput.files[0] ?? null;
@@ -2143,7 +2230,10 @@ document.addEventListener("click", (event) => {
 for (const button of document.querySelectorAll("[data-bulk-orientation]")) {
   button.addEventListener("click", () => rotateBulk(button.dataset.bulkOrientation));
 }
-byId("cut-back").addEventListener("click", () => { renderRoll(); showScreen("roll"); });
+byId("cut-back").addEventListener("click", () => {
+  if (state.singlePhoto) { finishSinglePhoto(); return; }
+  renderRoll(); showScreen("roll");
+});
 byId("roll-info-back").addEventListener("click", () => showScreen(state.returnScreen));
 byId("roll-info-done").addEventListener("click", () => { renderRoll(); if (state.returnScreen === "cut") renderCut(); showScreen(state.returnScreen); });
 byId("export-back").addEventListener("click", () => showScreen(state.returnScreen));
@@ -2291,6 +2381,121 @@ byId("toggle-all-cuts").addEventListener("click", () => {
   renderPreview();
 });
 
+function singlePhotoExtension() {
+  return { jpeg: "jpg", png: "png", webp: "webp" }[state.exportFormat];
+}
+
+function showSinglePhotoNameError(inputId, errorId, line) {
+  byId(inputId).setAttribute("aria-invalid", line ? "true" : "false");
+  byId(errorId).textContent = line ?? "";
+  byId(errorId).hidden = !line;
+}
+
+function closeSinglePhotoNameDialog() {
+  byId("single-photo-name-layer").hidden = true;
+  byId("single-photo-name-draft").value = "";
+  showSinglePhotoNameError("single-photo-name-draft", "single-photo-name-dialog-error", null);
+  singlePhotoNameAction = null;
+  singlePhotoNameOpener?.focus();
+  singlePhotoNameOpener = null;
+}
+
+function openSinglePhotoNameDialog(action) {
+  singlePhotoNameAction = action;
+  singlePhotoNameOpener = byId(`single-photo-${action}`);
+  byId("single-photo-name-draft").value = state.singlePhoto.name;
+  byId("single-photo-name-confirm").textContent = SINGLE_PHOTO_COPY[action === "save" ? "TXT-UI-0492" : "TXT-UI-0237"];
+  showSinglePhotoNameError("single-photo-name-draft", "single-photo-name-dialog-error", null);
+  byId("single-photo-name-layer").hidden = false;
+  byId("single-photo-name-draft").focus();
+}
+
+async function requestSinglePhotoAction(pressed) {
+  if (!state.singlePhoto || byId(`single-photo-${pressed}`).disabled) return;
+  const action = chooseSinglePhotoAction({ pressed, name: state.singlePhoto.name, mode: state.mode });
+  if (action.openNameDialog) openSinglePhotoNameDialog(action.openNameDialog);
+  else await runSinglePhotoAction(action.run);
+}
+
+async function runSinglePhotoAction(pressed) {
+  const session = state.singlePhoto;
+  if (!session || session.running) return;
+  const checked = checkNameDialogInput(session.name, state.mode, singlePhotoExtension());
+  if (!checked.ok || state.mode === null) return;
+  session.running = true;
+  updateExportControls();
+  try {
+    const selected = currentExportItems();
+    reassessUndetermined(selected);
+    if (selected.some(completenessBlocksExport)) throw new Error("스캔 파일을 열 수 없어 내보내지 않았어요.");
+    setExportReasons();
+    setStatus("내보낼 사진을 만들고 있어요.", false, exportStatus);
+    const started = performance.now();
+    const filename = makeSinglePhotoFilename(checked.name, singlePhotoExtension(), state.mode);
+    const output = await buildOutput(filename.name);
+    // Ignore a completion if this temporary flow was left while the render was pending.
+    if (state.singlePhoto !== session) return;
+    const file = output.files[0];
+    if (pressed === "share") {
+      const sharedFile = makeShareFiles([file])[0];
+      if (!navigator.canShare?.({ files: [sharedFile] })) {
+        setStatus("이 브라우저에서는 사진 파일을 공유할 수 없어요.", true, exportStatus);
+        return;
+      }
+      await navigator.share({ files: [sharedFile] });
+      setStatus("", false, exportStatus);
+      // Both apps keep the export screen after sharing current settings.
+    } else {
+      downloadBytes(file.blob, file.name, file.blob.type);
+      setExportReasons(output.photoOnlyFrames);
+      releaseResult(state.result);
+      state.result = {
+        files: [{ ...file, selected: true }], elapsedMs: performance.now() - started,
+        returnScreen: state.returnScreen, delivery: "download", shared: 0,
+      };
+      renderResult();
+      showScreen("result");
+    }
+  } catch (error) {
+    if (state.singlePhoto === session) setStatus(error.name === "AbortError" ? "공유를 취소했어요." : error.message, error.name !== "AbortError", exportStatus);
+  } finally {
+    session.running = false;
+    updateExportControls();
+  }
+}
+
+byId("single-photo-name").addEventListener("input", (event) => {
+  if (!state.singlePhoto) return;
+  state.singlePhoto.name = event.target.value;
+  updateExportControls();
+});
+for (const action of ["share", "save"]) byId(`single-photo-${action}`).addEventListener("click", () => requestSinglePhotoAction(action));
+byId("single-photo-name-cancel").addEventListener("click", closeSinglePhotoNameDialog);
+byId("single-photo-name-draft").addEventListener("input", () => showSinglePhotoNameError("single-photo-name-draft", "single-photo-name-dialog-error", null));
+byId("single-photo-name-confirm").addEventListener("click", () => {
+  if (!state.singlePhoto || !singlePhotoNameAction) return;
+  const checked = checkNameDialogInput(byId("single-photo-name-draft").value, state.mode, singlePhotoExtension());
+  if (!checked.ok) {
+    showSinglePhotoNameError("single-photo-name-draft", "single-photo-name-dialog-error", checked.line);
+    return;
+  }
+  const action = singlePhotoNameAction;
+  state.singlePhoto.name = checked.name;
+  closeSinglePhotoNameDialog();
+  runSinglePhotoAction(action);
+});
+byId("single-photo-name-layer").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") { event.preventDefault(); closeSinglePhotoNameDialog(); }
+  else if (event.key === "Tab") {
+    const controls = [...byId("single-photo-name-layer").querySelectorAll("input, button")]
+      .filter((control) => !control.disabled && control.getClientRects().length);
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }
+});
+
 exportButton.addEventListener("click", async () => {
   try {
     exportButton.disabled = true;
@@ -2330,7 +2535,7 @@ shareButton.addEventListener("click", async () => {
       const files = makeShareFiles(state.result.files.filter((file) => file.selected));
       const groups = groupShareFiles(files);
       if (!groups) {
-        shareProgress.textContent = "이 브라우저에서는 사진 파일을 공유할 수 없어요. ZIP 내려받기를 이용해 주세요.";
+        shareProgress.textContent = state.singlePhoto ? "이 브라우저에서는 사진 파일을 공유할 수 없어요." : "이 브라우저에서는 사진 파일을 공유할 수 없어요. ZIP 내려받기를 이용해 주세요.";
         shareProgress.hidden = false;
         return;
       }
@@ -2365,7 +2570,9 @@ byId("toggle-all-results").addEventListener("click", () => {
   for (const file of state.result.files) file.selected = select;
   renderResult();
 });
+byId("single-photo-result-back").addEventListener("click", finishSinglePhoto);
 byId("result-done").addEventListener("click", () => {
+  if (state.singlePhoto) { finishSinglePhoto(); return; }
   const screen = state.result?.returnScreen ?? "roll";
   releaseResult(state.result);
   state.result = null;
