@@ -149,6 +149,7 @@ h2 {
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
+.preview-note a { color: var(--accent); font-weight: 700; }
 .input-section { margin-bottom: var(--section-gap); }
 .input-section > h2 { margin-bottom: var(--group-title-gap); }
 .info-card {
