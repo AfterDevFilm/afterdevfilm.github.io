@@ -567,7 +567,7 @@ h2 {
 }
 .bulk-terminal-actions {
   display: grid;
-  /* 끝내기 and 내보내기 take half each. */
+  
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
   margin-top: 8px;
@@ -585,7 +585,7 @@ h2 {
   right: 0;
   bottom: calc(100% + 8px);
   display: grid;
-  /* The menu hangs from the 컷 번호 바꾸기 button and fits its words. */
+  
   width: max-content;
   min-width: calc(50% - 4px);
   max-width: calc(100vw - 24px);
@@ -595,7 +595,7 @@ h2 {
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--surface);
-  /* White card, 1px line, no shadow. */
+  
   box-shadow: none;
 }
 .bulk-number-menu hr {
@@ -1429,7 +1429,7 @@ label:has(input:focus-visible) > span {
 .feedback-link a { display: inline-block; min-height: 44px; padding: 12px 8px; color: var(--accent); font-weight: 700; }
 .feedback-link a + a { margin-left: 4px; }
 
-/* Copyright line below the app screens. */
+
 .site-copyright {
   margin: 32px 16px 24px;
   text-align: center;
@@ -1451,7 +1451,7 @@ label:has(input:focus-visible) > span {
 .record-zero-cut-result p { margin: 0; }
 .record-zero-cut > .muted { color: var(--ink-muted); }
 
-/* The pending review stays behind this independent confirmation surface. */
+
 .record-zero-cut-dialog { display: flex; flex-direction: column; max-height: calc(100dvh - 2 * var(--side-margin)); min-height: 0; }
 .record-zero-cut { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding-bottom: 1rem; }
 .record-zero-cut > * { flex-shrink: 0; }
@@ -1464,7 +1464,7 @@ label:has(input:focus-visible) > span {
 .record-zero-cut .record-zero-cut-result p { color: var(--ink); }
 .number-unit { white-space: nowrap; }
 
-/* Single Photo only: existing Roll controls and their geometry stay intact. */
+
 .single-photo-entry { margin-top: 14px; }
 .single-photo-name-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 #single-photo-name-row { margin-top: 24px; }

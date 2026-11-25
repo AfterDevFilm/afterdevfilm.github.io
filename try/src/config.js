@@ -1,1 +1,1 @@
-export const APP_INTEREST_URL = "";
+export const APP_INTEREST_URL="";

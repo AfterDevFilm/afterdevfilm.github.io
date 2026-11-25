@@ -1,17 +1,1 @@
-import { assessZeroCut, pairZeroCut } from "./template-zero-cut.js";
-
-// The parser owns number interpretation; raw numbers are display-only.
-export function zeroCutRecords(cuts, numberRaws) {
-  return cuts.map((cut, index) => ({ numberRaw: numberRaws[index], number: cut.n }));
-}
-
-export function applyZeroCut(cuts, numberRaws, scanCount, selectedIndex) {
-  const records = zeroCutRecords(cuts, numberRaws);
-  if (!assessZeroCut(records, scanCount).ask) return cuts.map((cut) => ({ ...cut }));
-  const pairing = pairZeroCut(records, scanCount, selectedIndex);
-  return cuts.map((cut, index) => ({
-    ...cut,
-    n: pairing.detachedRecordIndices.includes(index) ? null
-      : pairing.targetCutByRecordIndex[index] ?? null,
-  }));
-}
+import{assessZeroCut as e,pairZeroCut as r}from"./template-zero-cut.js";export function zeroCutRecords(e,r){return e.map((e,t)=>({numberRaw:r[t],number:e.n}))}export function applyZeroCut(t,n,o,u){const c=zeroCutRecords(t,n);if(!e(c,o).ask)return t.map(e=>({...e}));const a=r(c,o,u);return t.map((e,r)=>({...e,n:a.detachedRecordIndices.includes(r)?null:a.targetCutByRecordIndex[r]??null}))}
